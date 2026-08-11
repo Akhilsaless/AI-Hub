@@ -1,5 +1,5 @@
 import {encryptStoredKey,decryptStoredKey} from './vault.js';
-export const GOOGLE_SCOPES=['openid','email','profile','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/calendar.events','https://www.googleapis.com/auth/drive.file'];
+export const GOOGLE_SCOPES=['openid','email','profile','https://www.googleapis.com/auth/gmail.modify','https://www.googleapis.com/auth/calendar.events','https://www.googleapis.com/auth/drive.readonly'];
 export function origin(request){const u=new URL(request.url);return `${u.protocol}//${u.host}`}
 export async function ensureGoogleTable(env){await env.DB.prepare(`CREATE TABLE IF NOT EXISTS tool_connectors(id TEXT PRIMARY KEY,label TEXT NOT NULL,key_cipher TEXT,iv TEXT,account TEXT,metadata TEXT,enabled INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL)`).run()}
 export async function loadGoogle(env){await ensureGoogleTable(env);const row=await env.DB.prepare(`SELECT * FROM tool_connectors WHERE id='google'`).first();if(!row)return {row:null,tokens:null,meta:{}};let tokens=null,meta={};try{tokens=JSON.parse(await decryptStoredKey(env,row)||'null')}catch{}try{meta=JSON.parse(row.metadata||'{}')}catch{}return {row,tokens,meta}}
