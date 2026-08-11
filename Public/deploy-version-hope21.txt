@@ -1,3 +1,4 @@
 HOPE 2.1 deployment marker
 Connect Center route: /connect
 Expected production commit includes unified connectors and Google OAuth.
+Forced redeploy: 2026-08-12 production routing repair.
