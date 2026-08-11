@@ -1,0 +1,13 @@
+name = "hope-automation-scheduler"
+main = "scheduler-worker.js"
+compatibility_date = "2026-08-11"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+HOPE_RUNNER_URL = "https://ai-hub-93x.pages.dev/api/agents/run-due"
+
+# Required before deploying this Worker:
+# wrangler secret put AUTOMATION_RUNNER_SECRET --config wrangler.scheduler.toml
+# Add the exact same AUTOMATION_RUNNER_SECRET to the ai-hub Pages production secrets.
