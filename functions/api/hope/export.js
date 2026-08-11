@@ -1,0 +1,4 @@
+import {requireOwner} from '../../lib/auth.js';
+import {ensureHope21} from '../../lib/hope21-schema.js';
+const json=(v,s=200)=>new Response(JSON.stringify(v,null,2),{status:s,headers:{'content-type':'application/json','cache-control':'no-store','content-disposition':'attachment; filename="hope-experience-export.json"'}});
+export async function onRequestGet({request,env}){const denied=await requireOwner(request,env);if(denied)return denied;try{await ensureHope21(env);const tables=['hope_memories','hope_goals','hope_goal_items','hope_projects','hope_open_loops','hope_decisions','hope_policies','hope_skills','hope_skill_stats','hope_experience','hope_outcomes','hope_timeline'];const data={schema:'HOPE-experience-export/1',exportedAt:new Date().toISOString()};for(const t of tables){const r=await env.DB.prepare(`SELECT * FROM ${t}`).all();data[t]=r.results||[]}return json(data)}catch(e){return json({ok:false,error:String(e?.message||e)},500)}}
