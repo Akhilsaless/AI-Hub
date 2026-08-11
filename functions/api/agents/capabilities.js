@@ -1,19 +1,5 @@
 import {requireOwner} from '../../lib/auth.js';
+import {loadGoogle,googleGet} from '../../lib/google-oauth.js';
+import {loadGitHubConnector} from '../../lib/github-app.js';
 const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
-export async function onRequestGet({request,env}){
- const denied=await requireOwner(request,env);if(denied)return denied;
- const integrations=await env.DB.prepare(`SELECT id,enabled,verified_free,model FROM integrations ORDER BY id`).all().catch(()=>({results:[]}));
- const connected=new Set((integrations.results||[]).filter(x=>x.enabled).map(x=>x.id));
- return json({ok:true,capabilities:[
-  {id:'chat',label:'AI chat',ready:connected.size>0,requires:'AI provider'},
-  {id:'memory',label:'Persistent memory',ready:true,requires:null},
-  {id:'research',label:'Web research',ready:connected.has('openrouter'),requires:'OpenRouter tool-capable model'},
-  {id:'files',label:'File intake',ready:true,requires:null,note:'Local selection and metadata are wired; document extraction connector is optional.'},
-  {id:'vision',label:'Image/vision',ready:connected.has('openrouter'),requires:'vision-capable routed model'},
-  {id:'github',label:'GitHub coding',ready:false,requires:'GitHub connector/token'},
-  {id:'builder',label:'App builder',ready:false,requires:'GitHub or deployment connector'},
-  {id:'automation',label:'Automation queue',ready:true,requires:'scheduler for timed execution'},
-  {id:'gmail',label:'Gmail',ready:false,requires:'Google OAuth'},
-  {id:'calendar',label:'Calendar',ready:false,requires:'Google OAuth'}
- ],providers:integrations.results||[]});
-}
+export async function onRequestGet({request,env}){const denied=await requireOwner(request,env);if(denied)return denied;const integrations=await env.DB.prepare(`SELECT id,enabled,verified_free,model FROM integrations ORDER BY id`).all().catch(()=>({results:[]}));const connected=new Set((integrations.results||[]).filter(x=>x.enabled).map(x=>x.id));let github=false,gmail=false,calendar=false,drive=false;try{const g=await loadGitHubConnector(env);github=Boolean(g.row&&g.app&&g.meta?.installation_id)}catch{}try{const g=await loadGoogle(env);if(g.row){for(const [k,url] of Object.entries({gmail:'https://gmail.googleapis.com/gmail/v1/users/me/profile',calendar:'https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1',drive:'https://www.googleapis.com/drive/v3/files?pageSize=1&fields=files(id)'})){try{await googleGet(env,url);if(k==='gmail')gmail=true;if(k==='calendar')calendar=true;if(k==='drive')drive=true}catch{}}}}catch{}return json({ok:true,capabilities:[{id:'chat',label:'AI chat',ready:connected.size>0,requires:'AI provider'},{id:'memory',label:'Persistent memory',ready:true,requires:null},{id:'research',label:'Web research',ready:connected.has('openrouter'),requires:'OpenRouter tool-capable model'},{id:'files',label:'File intake',ready:true,requires:null},{id:'vision',label:'Image/vision',ready:connected.has('openrouter'),requires:'vision-capable routed model'},{id:'github',label:'GitHub coding',ready:github,requires:'GitHub connection'},{id:'builder',label:'App builder',ready:github,requires:'GitHub connection'},{id:'automation',label:'Automation queue',ready:true,requires:'scheduler for timed execution'},{id:'gmail',label:'Gmail',ready:gmail,requires:'Google OAuth'},{id:'calendar',label:'Calendar',ready:calendar,requires:'Google OAuth'},{id:'drive',label:'Google Drive',ready:drive,requires:'Google OAuth'}],providers:integrations.results||[]})}
