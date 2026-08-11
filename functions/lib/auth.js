@@ -54,8 +54,8 @@ export async function passwordMatches(input,env){
   return diff===0;
 }
 export function ownerCookie(token){
-  return `aihub_owner=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=43200`;
+  return `aihub_owner=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=43200`;
 }
 export function clearOwnerCookie(){
-  return `aihub_owner=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0`;
+  return `aihub_owner=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
