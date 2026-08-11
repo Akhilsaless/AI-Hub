@@ -1,0 +1,11 @@
+name = "ai-hub"
+main = "worker.js"
+compatibility_date = "2026-08-11"
+
+[vars]
+ZERO_COST_MODE = "true"
+
+# Optional after first deploy:
+# 1) Create a D1 database in Cloudflare and bind it as DB in the dashboard.
+# 2) Add HUB_MASTER_KEY as a Worker secret.
+# The page works without them, but permanent encrypted integration storage requires both.
