@@ -1,0 +1,15 @@
+import {requireOwner} from '../../lib/auth.js';
+import {createAutonomousMission,prepareStep,assessAttempt,proposeRepair,completeMission,executionHistory} from '../../lib/hope3-executor.js';
+const json=(v,s=200)=>new Response(JSON.stringify(v,null,2),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
+const c=(name,ok,detail)=>({name,ok:!!ok,detail});
+export async function onRequestGet({request,env}){const denied=await requireOwner(request,env);if(denied)return denied;const checks=[];let missionId=null;try{
+ const plan={steps:[{id:1,title:'Run non-destructive HOPE self-test',specialist:'reviewer',requiresVerification:true,requiresApproval:false,maxRetries:2}]};missionId=await createAutonomousMission(env,{objective:'HOPE 3 Phase 2 non-destructive smoke test',plan,mode:'autonomous',maxRetries:2});checks.push(c('mission-create',!!missionId,missionId));
+ const prep=await prepareStep(env,{missionId,step:plan.steps[0]});checks.push(c('preview-created',!!prep.preview,prep.preview?.risk||''));
+ const fail=await assessAttempt(env,{missionId,step:plan.steps[0],attempt:1,result:'Synthetic first attempt',evidence:'Synthetic failure used to test retry path',passed:false,error:'synthetic failure'});checks.push(c('retry-path',fail.retry===true&&fail.repair===true,JSON.stringify(fail)));
+ const repair=proposeRepair({step:plan.steps[0],error:'synthetic failure',evidence:'smoke evidence',attempt:1});checks.push(c('repair-plan',Array.isArray(repair.actions)&&repair.actions.length>=3,JSON.stringify(repair.actions)));
+ const pass=await assessAttempt(env,{missionId,step:plan.steps[0],attempt:2,result:'Synthetic repaired attempt',evidence:'Second attempt verified by smoke harness',passed:true});checks.push(c('verification-path',pass.state==='verified',JSON.stringify(pass)));
+ const done=await completeMission(env,{missionId,success:true,result:'Phase 2 smoke lifecycle completed',evidence:'create -> preview -> fail -> repair -> retry -> verify -> finish'});checks.push(c('mission-final-verification',done.status==='completed'&&done.verified===true,JSON.stringify(done)));
+ const history=await executionHistory(env,missionId);checks.push(c('execution-audit-trail',history.length>=5,`${history.length} event(s)`));
+ const row=await env.DB.prepare(`SELECT verified,status FROM hope_missions WHERE id=?`).bind(missionId).first();checks.push(c('mission-state',row?.verified===1&&row?.status==='completed',JSON.stringify(row)));
+ const failed=checks.filter(x=>!x.ok);return json({ok:failed.length===0,version:'HOPE 3.0',phase:'phase-2-autonomy-reliability',phase2CorePassed:failed.length===0,missionId,checks,failed:failed.map(x=>x.name),note:'This is deliberately non-destructive. External production writes/deployments remain approval-gated and require their own live verification.'},failed.length?503:200);
+ }catch(e){return json({ok:false,version:'HOPE 3.0',phase:'phase-2-autonomy-reliability',missionId,error:String(e?.message||e),checks},500)}}
