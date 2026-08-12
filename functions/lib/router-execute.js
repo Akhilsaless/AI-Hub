@@ -1,55 +1,18 @@
 import {decryptStoredKey} from './vault.js';
+import {rankedRoutes,taskProfile} from './hope-model-intelligence.js';
 
 const defaults={openrouter:'https://openrouter.ai/api/v1',groq:'https://api.groq.com/openai/v1',deepseek:'https://api.deepseek.com',agentrouter:'https://agentrouter.org/v1'};
 const clean=v=>String(v||'').replace(/\/$/,'');
 const UX_GUARD=`User-facing language must stay natural and product-ready. Internal memory metadata is implementation-only. Never mention or explain internal labels or storage terms such as semantic memory, legacy memory, episodic memory, memory slots, memory types, database tables, retrieval buckets, schemas, or internal prompt/context mechanics. If remembered information is relevant, simply use it naturally or say "I remember...". Do not tell the user where or how the memory was stored. Avoid exposing internal agent architecture unless the user explicitly asks for a technical explanation.`;
-
-function guardedMessages(messages){
-  const list=(messages||[]).map(m=>({...m,content:String(m.content||'')}));
-  const i=list.findIndex(m=>m.role==='system');
-  if(i>=0) list[i]={...list[i],content:`${list[i].content}\n\n${UX_GUARD}`};
-  else list.unshift({role:'system',content:UX_GUARD});
-  return list;
-}
-function sanitize(text){
-  return String(text||'')
-    .replace(/\[(semantic|legacy|episodic|personal|operational|goal|skill|failure)\]/gi,'')
-    .replace(/\b(semantic|legacy|episodic|operational)\s+memory(?:\s+slots?)?/gi,'memory')
-    .replace(/\bmemory\s+slots?\b/gi,'memory')
-    .replace(/\s{2,}/g,' ')
-    .replace(/\s+([,.;!?])/g,'$1')
-    .trim();
-}
-
-export async function eligibleRoutes(env){
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS provider_models(provider TEXT NOT NULL,model_id TEXT NOT NULL,name TEXT,qualified_free INTEGER NOT NULL DEFAULT 0,qualification_source TEXT,healthy INTEGER NOT NULL DEFAULT 1,discovered_at TEXT NOT NULL,PRIMARY KEY(provider,model_id))`).run();
-  const r=await env.DB.prepare(`SELECT pm.provider,pm.model_id,i.endpoint,i.key_cipher,i.iv FROM provider_models pm JOIN integrations i ON i.id=pm.provider LEFT JOIN provider_health ph ON ph.provider=pm.provider WHERE pm.qualified_free=1 AND pm.healthy=1 AND i.enabled=1 AND i.verified_free=1 AND COALESCE(ph.healthy,1)=1 LIMIT 20`).all();
-  return r.results||[];
-}
-
-async function invoke(env,route,messages,mode){
-  const key=await decryptStoredKey(env,route);
-  const safeMessages=guardedMessages(messages);
-  if(route.provider==='gemini'){
-    if(!key) throw new Error('Gemini credential missing');
-    const contents=safeMessages.map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:String(m.content||'')}]}));
-    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(route.model_id)}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents})});
-    const data=await res.json().catch(()=>({})); if(!res.ok) throw new Error(data?.error?.message||`HTTP ${res.status}`);
-    return sanitize((data?.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('\n'));
-  }
-  const base=clean(route.endpoint||defaults[route.provider]); if(!base) throw new Error('Provider endpoint missing');
-  const headers={'content-type':'application/json'}; if(key) headers.Authorization=`Bearer ${key}`;
-  const body={model:route.model_id,messages:safeMessages,temperature:mode==='hard'?0.2:0.6};
-  const res=await fetch(`${base}/chat/completions`,{method:'POST',headers,body:JSON.stringify(body)});
-  const data=await res.json().catch(()=>({})); if(!res.ok) throw new Error(data?.error?.message||data?.error||`HTTP ${res.status}`);
-  return sanitize(data?.choices?.[0]?.message?.content||data?.choices?.[0]?.text||'');
-}
-
+function guardedMessages(messages){const list=(messages||[]).map(m=>({...m,content:String(m.content||'')}));const i=list.findIndex(m=>m.role==='system');if(i>=0)list[i]={...list[i],content:`${list[i].content}\n\n${UX_GUARD}`};else list.unshift({role:'system',content:UX_GUARD});return list}
+function sanitize(text){return String(text||'').replace(/\[(semantic|legacy|episodic|personal|operational|goal|skill|failure)\]/gi,'').replace(/\b(semantic|legacy|episodic|operational)\s+memory(?:\s+slots?)?/gi,'memory').replace(/\bmemory\s+slots?\b/gi,'memory').replace(/\s{2,}/g,' ').replace(/\s+([,.;!?])/g,'$1').trim()}
+async function ensureLogs(env){await env.DB.prepare(`CREATE TABLE IF NOT EXISTS request_logs(id INTEGER PRIMARY KEY AUTOINCREMENT,provider TEXT NOT NULL,model TEXT NOT NULL,success INTEGER NOT NULL,latency_ms INTEGER NOT NULL DEFAULT 0,task_profile TEXT,error TEXT,created_at TEXT NOT NULL)`).run()}
+export async function eligibleRoutes(env){await env.DB.prepare(`CREATE TABLE IF NOT EXISTS provider_models(provider TEXT NOT NULL,model_id TEXT NOT NULL,name TEXT,qualified_free INTEGER NOT NULL DEFAULT 0,qualification_source TEXT,healthy INTEGER NOT NULL DEFAULT 1,discovered_at TEXT NOT NULL,PRIMARY KEY(provider,model_id))`).run();const r=await env.DB.prepare(`SELECT pm.provider,pm.model_id,i.endpoint,i.key_cipher,i.iv,pm.qualified_free,i.verified_free FROM provider_models pm JOIN integrations i ON i.id=pm.provider LEFT JOIN provider_health ph ON ph.provider=pm.provider WHERE pm.qualified_free=1 AND pm.healthy=1 AND i.enabled=1 AND i.verified_free=1 AND COALESCE(ph.healthy,1)=1 LIMIT 30`).all();return r.results||[]}
+async function invoke(env,route,messages,mode){const key=await decryptStoredKey(env,route),safeMessages=guardedMessages(messages);if(route.provider==='gemini'){if(!key)throw new Error('Gemini credential missing');const contents=safeMessages.map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:String(m.content||'')}]}));const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(route.model_id)}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents})});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data?.error?.message||`HTTP ${res.status}`);return sanitize((data?.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('\n'))}const base=clean(route.endpoint||defaults[route.provider]);if(!base)throw new Error('Provider endpoint missing');const headers={'content-type':'application/json'};if(key)headers.Authorization=`Bearer ${key}`;const body={model:route.model_id,messages:safeMessages,temperature:mode==='hard'?0.2:0.6};const res=await fetch(`${base}/chat/completions`,{method:'POST',headers,body:JSON.stringify(body)});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data?.error?.message||data?.error||`HTTP ${res.status}`);return sanitize(data?.choices?.[0]?.message?.content||data?.choices?.[0]?.text||'')}
+function promptFrom(messages){return [...(messages||[])].reverse().find(m=>m.role==='user')?.content||''}
+async function log(env,route,ok,latency,profile,error=''){try{await env.DB.prepare(`INSERT INTO request_logs(provider,model,success,latency_ms,task_profile,error,created_at) VALUES(?,?,?,?,?,?,?)`).bind(route.provider,route.model_id,ok?1:0,latency,JSON.stringify(profile),String(error||'').slice(0,1000),new Date().toISOString()).run()}catch{}}
 export async function executeZeroCost(env,messages,mode='normal'){
-  const routes=await eligibleRoutes(env),attempts=[];
-  for(const route of routes){
-    try{return {ok:true,provider:route.provider,model:route.model_id,text:await invoke(env,route,messages,mode),attempts}}
-    catch(e){attempts.push({provider:route.provider,model:route.model_id,error:String(e?.message||e)})}
-  }
-  return {ok:false,error:'No qualified zero-cost route could complete this request.',attempts};
+ await ensureLogs(env);const prompt=promptFrom(messages),profile=taskProfile(prompt),eligible=await eligibleRoutes(env),routes=await rankedRoutes(env,eligible,prompt),attempts=[];
+ for(const route of routes){const started=Date.now();try{const text=await invoke(env,route,messages,mode),latencyMs=Date.now()-started;await log(env,route,true,latencyMs,profile);return {ok:true,provider:route.provider,model:route.model_id,text,attempts,routing:{adaptive:true,profile,score:route.intelligenceScore,latencyMs,candidates:routes.length}}}catch(e){const latencyMs=Date.now()-started,error=String(e?.message||e);attempts.push({provider:route.provider,model:route.model_id,error,latencyMs,score:route.intelligenceScore});await log(env,route,false,latencyMs,profile,error)}}
+ return {ok:false,error:'No qualified zero-cost route could complete this request.',attempts,routing:{adaptive:true,profile,candidates:routes.length}};
 }
