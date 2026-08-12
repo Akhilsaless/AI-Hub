@@ -1,0 +1,3 @@
+const clean=v=>String(v||'').replace(/\s+/g,' ').trim();
+const strip=html=>String(html||'').replace(/<script[\s\S]*?<\/script>/gi,' ').replace(/<style[\s\S]*?<\/style>/gi,' ').replace(/<[^>]+>/g,' ').replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&quot;/gi,'"').replace(/&#39;/gi,"'").replace(/\s+/g,' ').trim();
+function blockedHost(host){const h=String(host||'').toLowerCase().replace(/^\[|\]$/g,'');if
