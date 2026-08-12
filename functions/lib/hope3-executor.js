@@ -1,0 +1,43 @@
+import {createMission,previewStep,requestApproval,verify,finishMission} from './hope21-mission.js';
+import {recordOutcome} from './hope21-intelligence.js';
+const now=()=>new Date().toISOString();
+const clean=v=>String(v||'').trim();
+const highRisk=s=>/(delete|payment|purchase|send|publish|production|merge|security|credential|secret|billing|charge|deploy)/i.test(s||'');
+
+async function ensure(env){
+ await env.DB.prepare(`CREATE TABLE IF NOT EXISTS hope3_execution_events(id INTEGER PRIMARY KEY AUTOINCREMENT,mission_id TEXT NOT NULL,step_id TEXT,event_type TEXT NOT NULL,status TEXT NOT NULL,detail TEXT,evidence TEXT,attempt INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL)`).run();
+}
+async function event(env,{missionId,stepId=null,type,status,detail='',evidence='',attempt=1}){
+ await ensure(env);await env.DB.prepare(`INSERT INTO hope3_execution_events(mission_id,step_id,event_type,status,detail,evidence,attempt,created_at) VALUES(?,?,?,?,?,?,?,?)`).bind(missionId,stepId,type,status,detail,evidence,attempt,now()).run();
+}
+export async function createAutonomousMission(env,{objective,plan,mode='ask_execute',maxRetries=3}={}){
+ const missionId=await createMission(env,{title:clean(objective)||'HOPE 3 mission',objective:clean(objective),plan:Array.isArray(plan?.steps)?plan.steps:[],mode,max_retries:maxRetries,status:'planned'});
+ await event(env,{missionId,type:'mission_created',status:'planned',detail:JSON.stringify({objective,plan}).slice(0,12000)});return missionId;
+}
+export async function prepareStep(env,{missionId,step}={}){
+ if(!step)throw new Error('step required');const action=clean(step.title||step.action||`step-${step.id||''}`);
+ const preview=await previewStep(env,{mission_id:missionId,scope:'hope3',action,summary:action,changes:step.expectedChanges||'',rollback:step.rollback||''});
+ const mustApprove=preview.approvalRequired||step.requiresApproval===true||highRisk(action);
+ await event(env,{missionId,stepId:String(step.id||''),type:'step_preview',status:mustApprove?'approval_required':'ready',detail:JSON.stringify(preview).slice(0,12000)});
+ if(mustApprove){const approval=await requestApproval(env,{mission_id:missionId,scope:'hope3',action,summary:action,changes:step.expectedChanges||'',rollback:step.rollback||''});return {ready:false,approvalRequired:true,approval,preview};}
+ return {ready:true,approvalRequired:false,preview};
+}
+export async function assessAttempt(env,{missionId,step,attempt=1,result='',evidence='',passed=false,error=''}={}){
+ const stepId=String(step?.id||'');
+ await event(env,{missionId,stepId,type:'attempt',status:passed?'passed':'failed',detail:clean(result||error),evidence:clean(evidence),attempt});
+ await verify(env,{mission_id:missionId,action:`step:${stepId}`,target:clean(step?.title),method:'evidence',status:passed?'passed':'failed',evidence:clean(evidence||result||error)});
+ if(passed)return {state:'verified',retry:false,repair:false};
+ const max=Number(step?.maxRetries??3);if(attempt<max)return {state:'retry',retry:true,repair:true,nextAttempt:attempt+1,reason:clean(error||'Verification failed')};
+ return {state:'failed',retry:false,repair:false,reason:clean(error||'Verification failed after maximum retries')};
+}
+export function proposeRepair({step,error,evidence='',attempt=1}={}){
+ return {type:'repair_plan',attempt,problem:clean(error||'Step verification failed'),evidence:clean(evidence),actions:['Re-inspect the failing step and its assumptions','Identify the smallest change that addresses the observed failure','Apply the repair only in the affected scope','Repeat the original verification plus focused regression checks'],step};
+}
+export async function completeMission(env,{missionId,success,result='',evidence='',environment=null,model=null,tool=null}={}){
+ const verification={action:'mission_outcome',target:missionId,method:'evidence',status:success?'passed':'failed',evidence:clean(evidence||result)};
+ const finished=await finishMission(env,{mission_id:missionId,status:success?'completed':'failed',result:clean(result),verification,environment,model,tool});
+ await event(env,{missionId,type:'mission_finished',status:finished.status,detail:clean(result),evidence:clean(evidence)});
+ await recordOutcome(env,{mission_id:missionId,action:'hope3_execution',outcome:clean(result)||finished.status,status:success?'success':'failed',verified:!!finished.verified,environment,model,tool});
+ return finished;
+}
+export async function executionHistory(env,missionId){await ensure(env);const r=await env.DB.prepare(`SELECT * FROM hope3_execution_events WHERE mission_id=? ORDER BY id`).bind(missionId).all();return r.results||[];}
