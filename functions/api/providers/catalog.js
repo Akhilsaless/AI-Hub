@@ -1,0 +1,4 @@
+import {requireOwner} from '../../lib/auth.js';
+import {PROVIDER_CATALOG,PROVIDER_CATALOG_VERSION} from '../../lib/provider-catalog.js';
+const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
+export async function onRequestGet({request,env}){const denied=await requireOwner(request,env);if(denied)return denied;try{const saved=env.DB?(await env.DB.prepare(`SELECT id,provider,model,verified_free,enabled,updated_at FROM integrations`).all()).results||[]:[];const map=Object.fromEntries(saved.map(x=>[x.id,x]));return json({ok:true,version:PROVIDER_CATALOG_VERSION,providers:PROVIDER_CATALOG.map(p=>({...p,connection:map[p.id]||null})),counts:{providers:PROVIDER_CATALOG.length,connected:saved.length,freeOrCredit:PROVIDER_CATALOG.filter(p=>/free|credit|trial|promo/.test(p.offerKind)).length}})}catch(e){return json({ok:false,error:String(e?.message||e)},500)}}
