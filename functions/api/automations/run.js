@@ -2,7 +2,7 @@ import {executeTask} from '../../lib/task-executor.js';
 import {ensureAutomationSchema,nextAfter} from '../../lib/automation-schedule.js';
 
 const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
-const RUNNER_TOKEN_SHA256='4fbeb5e533ea348491cdaa5c3324568ade029cc91907f6824d8ca91884185257';
+const RUNNER_TOKEN_SHA256='8b274042a979f7c4b71d70ced23470cf1de21c594885f436ef0632c4a07d609d';
 
 async function sha256Hex(value){
   const data=new TextEncoder().encode(value);
