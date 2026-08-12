@@ -1,5 +1,6 @@
 import {planningContext} from './hope21-router.js';
 import {operatingContext,capabilitySnapshot} from './hope21-intelligence.js';
+import {createExecutionPlan} from './hope3-planner.js';
 
 const text=v=>String(v||'').trim();
 const lower=v=>text(v).toLowerCase();
@@ -31,6 +32,12 @@ function stageFor(intent){
   }
 }
 
+function shouldDecompose(intent,objective){
+  if(['engineering','planning','action'].includes(intent))return true;
+  if(intent==='research'&&/\b(compare|competitors?|deep|report|strategy|market|analy[sz]e)\b/i.test(objective))return true;
+  return false;
+}
+
 export async function orchestrate(env,{message,mode='AUTO',attachments=[]}={}){
   const objective=text(message);
   if(!objective)throw new Error('message is required');
@@ -45,16 +52,28 @@ export async function orchestrate(env,{message,mode='AUTO',attachments=[]}={}){
     liveResearch:intent.primary.name==='research',
     memory:intent.primary.name==='memory'||intent.secondary.some(x=>x.name==='memory'),
     engineering:intent.primary.name==='engineering',
+    planning:shouldDecompose(intent.primary.name,objective),
     approval:intent.primary.name==='action',
     multimodal:attachments.length>0||intent.primary.name==='multimodal',
     verification:['research','engineering','action'].includes(intent.primary.name)
   };
+  const context={
+    relevantSkills:planContext.relevantSkills||[],
+    activeGoals:(operating.goals||[]).slice(0,5),
+    activeProjects:(operating.projects||[]).slice(0,5),
+    openLoops:(operating.openLoops||[]).slice(0,5)
+  };
+  let executionPlan=null;
+  if(needs.planning){
+    executionPlan=await createExecutionPlan(env,{objective,intent:intent.primary.name,context});
+  }
   const constraints={
     zeroCostPreferred:true,
     noUnverifiedSuccessClaims:true,
     consequentialActionsNeedApproval:true,
     memoryOnlyWhenRelevant:true,
-    externalContentUntrusted:true
+    externalContentUntrusted:true,
+    preserveExistingStructure:true
   };
   return {
     version:'HOPE 3.0',
@@ -64,12 +83,9 @@ export async function orchestrate(env,{message,mode='AUTO',attachments=[]}={}){
     stages,
     needs,
     constraints,
-    context:{
-      relevantSkills:planContext.relevantSkills||[],
-      activeGoals:(operating.goals||[]).slice(0,5),
-      activeProjects:(operating.projects||[]).slice(0,5),
-      openLoops:(operating.openLoops||[]).slice(0,5)
-    },
+    context,
+    executionPlan,
+    specialists:executionPlan?.specialists||[],
     capabilities,
     status:'planned'
   };
