@@ -1,0 +1,1 @@
+export async function onRequest(context){const r=await context.next();const u=new URL(context.request.url);if(u.pathname!='/hope.html'||!String(r.headers.get('content-type')||'').includes('text/html'))return r;return new HTMLRewriter().on('body',{element(el){el.append('<script src="/hope-level1.js"></script>',{html:true})}}).transform(r)}
