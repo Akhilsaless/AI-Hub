@@ -1,0 +1,12 @@
+name = "hope-automation-scheduler"
+main = "worker.js"
+compatibility_date = "2026-08-11"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+HOPE_RUNNER_URL = "https://ai-hub-93x.pages.dev"
+
+# Add AUTOMATION_RUNNER_SECRET as an encrypted Worker secret.
+# The identical secret must also exist in the ai-hub Pages production environment.
