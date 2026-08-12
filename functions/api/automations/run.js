@@ -2,34 +2,22 @@ import {executeTask} from '../../lib/task-executor.js';
 import {ensureAutomationSchema,nextAfter} from '../../lib/automation-schedule.js';
 
 const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
-const RUNNER_PUBLIC_KEY_B64='lr+ucush6iCkX1H/7xmzjteBDZcHNu4Euq3v04HTpJo=';
+const RUNNER_TOKEN_SHA256='4fbeb5e533ea348491cdaa5c3324568ade029cc91907f6824d8ca91884185257';
 
-function b64Bytes(value){
-  const raw=atob(value);
-  const out=new Uint8Array(raw.length);
-  for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);
-  return out;
-}
-
-async function signedRunnerAuthorized(request){
-  try{
-    const ts=request.headers.get('x-hope-ts')||'';
-    const sig=request.headers.get('x-hope-signature')||'';
-    const unix=Number(ts);
-    if(!Number.isFinite(unix)||Math.abs(Math.floor(Date.now()/1000)-unix)>120||!sig)return false;
-    const key=await crypto.subtle.importKey('raw',b64Bytes(RUNNER_PUBLIC_KEY_B64),{name:'Ed25519'},false,['verify']);
-    const message=new TextEncoder().encode(`${ts}:POST:/api/automations/run`);
-    return crypto.subtle.verify({name:'Ed25519'},key,b64Bytes(sig),message);
-  }catch{
-    return false;
-  }
+async function sha256Hex(value){
+  const data=new TextEncoder().encode(value);
+  const digest=await crypto.subtle.digest('SHA-256',data);
+  return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
 async function authorized(request,env){
   const expected=String(env.AUTOMATION_RUNNER_SECRET||'');
   const got=request.headers.get('authorization')||'';
   if(expected&&got===`Bearer ${expected}`)return true;
-  return signedRunnerAuthorized(request);
+
+  const token=request.headers.get('x-hope-runner-token')||'';
+  if(!token)return false;
+  return (await sha256Hex(token))===RUNNER_TOKEN_SHA256;
 }
 
 async function executeOne(env,task){
