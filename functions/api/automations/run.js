@@ -2,7 +2,7 @@ import {executeTask} from '../../lib/task-executor.js';
 import {ensureAutomationSchema,nextAfter} from '../../lib/automation-schedule.js';
 
 const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
-const RUNNER_PUBLIC_KEY_B64='ElP3ovOgXssEZufG3M0lk4TLXiQqKApJnR9Xd0drRPY=';
+const RUNNER_PUBLIC_KEY_B64='lr+ucush6iCkX1H/7xmzjteBDZcHNu4Euq3v04HTpJo=';
 
 function b64Bytes(value){
   const raw=atob(value);
