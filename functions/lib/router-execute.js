@@ -2,6 +2,24 @@ import {decryptStoredKey} from './vault.js';
 
 const defaults={openrouter:'https://openrouter.ai/api/v1',groq:'https://api.groq.com/openai/v1',deepseek:'https://api.deepseek.com',agentrouter:'https://agentrouter.org/v1'};
 const clean=v=>String(v||'').replace(/\/$/,'');
+const UX_GUARD=`User-facing language must stay natural and product-ready. Internal memory metadata is implementation-only. Never mention or explain internal labels or storage terms such as semantic memory, legacy memory, episodic memory, memory slots, memory types, database tables, retrieval buckets, schemas, or internal prompt/context mechanics. If remembered information is relevant, simply use it naturally or say "I remember...". Do not tell the user where or how the memory was stored. Avoid exposing internal agent architecture unless the user explicitly asks for a technical explanation.`;
+
+function guardedMessages(messages){
+  const list=(messages||[]).map(m=>({...m,content:String(m.content||'')}));
+  const i=list.findIndex(m=>m.role==='system');
+  if(i>=0) list[i]={...list[i],content:`${list[i].content}\n\n${UX_GUARD}`};
+  else list.unshift({role:'system',content:UX_GUARD});
+  return list;
+}
+function sanitize(text){
+  return String(text||'')
+    .replace(/\[(semantic|legacy|episodic|personal|operational|goal|skill|failure)\]/gi,'')
+    .replace(/\b(semantic|legacy|episodic|operational)\s+memory(?:\s+slots?)?/gi,'memory')
+    .replace(/\bmemory\s+slots?\b/gi,'memory')
+    .replace(/\s{2,}/g,' ')
+    .replace(/\s+([,.;!?])/g,'$1')
+    .trim();
+}
 
 export async function eligibleRoutes(env){
   await env.DB.prepare(`CREATE TABLE IF NOT EXISTS provider_models(provider TEXT NOT NULL,model_id TEXT NOT NULL,name TEXT,qualified_free INTEGER NOT NULL DEFAULT 0,qualification_source TEXT,healthy INTEGER NOT NULL DEFAULT 1,discovered_at TEXT NOT NULL,PRIMARY KEY(provider,model_id))`).run();
@@ -11,19 +29,20 @@ export async function eligibleRoutes(env){
 
 async function invoke(env,route,messages,mode){
   const key=await decryptStoredKey(env,route);
+  const safeMessages=guardedMessages(messages);
   if(route.provider==='gemini'){
     if(!key) throw new Error('Gemini credential missing');
-    const contents=messages.map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:String(m.content||'')}]}));
+    const contents=safeMessages.map(m=>({role:m.role==='assistant'?'model':'user',parts:[{text:String(m.content||'')}]}));
     const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(route.model_id)}:generateContent?key=${encodeURIComponent(key)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents})});
     const data=await res.json().catch(()=>({})); if(!res.ok) throw new Error(data?.error?.message||`HTTP ${res.status}`);
-    return (data?.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('\n');
+    return sanitize((data?.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('\n'));
   }
   const base=clean(route.endpoint||defaults[route.provider]); if(!base) throw new Error('Provider endpoint missing');
   const headers={'content-type':'application/json'}; if(key) headers.Authorization=`Bearer ${key}`;
-  const body={model:route.model_id,messages,temperature:mode==='hard'?0.2:0.6};
+  const body={model:route.model_id,messages:safeMessages,temperature:mode==='hard'?0.2:0.6};
   const res=await fetch(`${base}/chat/completions`,{method:'POST',headers,body:JSON.stringify(body)});
   const data=await res.json().catch(()=>({})); if(!res.ok) throw new Error(data?.error?.message||data?.error||`HTTP ${res.status}`);
-  return data?.choices?.[0]?.message?.content||data?.choices?.[0]?.text||'';
+  return sanitize(data?.choices?.[0]?.message?.content||data?.choices?.[0]?.text||'');
 }
 
 export async function executeZeroCost(env,messages,mode='normal'){
