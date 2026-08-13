@@ -1,5 +1,4 @@
-HOPE 2.1 deployment marker
-Connect Center route: /connect
-Expected production commit includes unified connectors and Google OAuth.
-Forced redeploy: 2026-08-12 production routing repair.
-Forced redeploy after GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET were saved in Cloudflare production secrets.
+AI HUB deployment marker
+Target: latest main with HOPE 3, Academy, SaaS accounts, Projects, Proof Arena, Skill Passport, customer connectors, mood selector, customer voice replies, delete conversation, and tenant-isolated customer HOPE.
+Forced redeploy: 2026-08-13T06:49+05:30
+Production URL: https://ai-hub-93x.pages.dev/
