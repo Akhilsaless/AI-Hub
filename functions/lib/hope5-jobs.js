@@ -1,0 +1,7 @@
+import {buildAgentPlan,missingActionFields} from './hope4-agent.js';
+export const JOB_VERSION='HOPE 5.0';
+const splitObjective=s=>String(s||'').split(/\s+(?:then|and then|after that|next)\s+|\s*;\s*/i).map(x=>x.trim()).filter(Boolean).slice(0,8);
+export function buildJob(objective,capabilities=[]){const parts=splitObjective(objective),plans=parts.map((text,index)=>({index,text,...buildAgentPlan(text,capabilities)})),actionable=plans.filter(x=>x.autonomous),steps=actionable.map((p,i)=>({id:`step_${i+1}`,index:i,objective:p.text,action:p.action,payload:p.payload||{},missingFields:missingActionFields(p.action,p.payload||{}),confirmationRequired:!!p.confirmationRequired,status:'pending'}));return {version:JOB_VERSION,objective:String(objective||''),status:steps.length?'planned':'needs_assistant',steps,createdAt:new Date().toISOString(),summary:{segments:parts.length,actionable:steps.length,confirmations:steps.filter(x=>x.confirmationRequired).length}}}
+export function nextJobStep(job){return job.steps.find(x=>!['completed','cancelled'].includes(x.status))||null}
+export function jobProgress(job){const total=job.steps.length,done=job.steps.filter(x=>x.status==='completed').length,failed=job.steps.filter(x=>x.status==='failed').length;return {total,done,failed,percent:total?Math.round(done/total*100):0,complete:total>0&&done===total}}
+export function safeToAutoRun(step){return !!step&&!step.confirmationRequired&&!step.missingFields?.length}
