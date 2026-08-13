@@ -4,12 +4,14 @@ import {LOCAL_ACTIONS,executeHopeLocalAction,summarizeLocalAction} from './hope5
 import {ACTIONS} from './hope4-executor.js';
 import {executeBackgroundRead,isBackgroundReadAction,summarizeBackgroundRead} from './hope6-background-read.js';
 import {userToolContextForUser} from './user-tool-context.js';
+import {missionMemory,memoryContext} from './hope6-working-memory.js';
 
 const now=()=>new Date().toISOString();
 
 export async function runMission(env,mission){
   const ctx=await userToolContextForUser(env,mission.user_id);if(!ctx.user)throw new Error('Mission user is unavailable');
-  let job=normalizeJob(buildJob(mission.objective,ctx.capabilities));job.id=crypto.randomUUID();job.missionId=mission.id;job.status='running';job.events.push({at:now(),type:'mission_job_started',missionId:mission.id});
+  const memories=await missionMemory(env,mission.user_id,mission.id,mission.objective,8);
+  let job=normalizeJob(buildJob(mission.objective,ctx.capabilities));job.id=crypto.randomUUID();job.missionId=mission.id;job.status='running';job.priorContext=memories;job.events.push({at:now(),type:'mission_job_started',missionId:mission.id,memoryItems:memories.length});
   let executed=0;
   while(executed<8){
     const step=nextJobStep(job);if(!step){job.status='completed';break}
@@ -22,7 +24,8 @@ export async function runMission(env,mission){
     if(!local&&!ctx.capabilities.includes(spec.capability)){step.status='blocked';job.status='blocked';job.block={type:'connector',stepId:step.id,connector:spec.connector,capability:spec.capability};break}
     try{
       step.status='executing';step.startedAt=now();
-      const result=local?await executeHopeLocalAction(env,step.action,payload):await executeBackgroundRead(env,mission.user_id,step.action,payload);
+      const localPayload=local?{...payload,priorContext:memoryContext(memories)}:payload;
+      const result=local?await executeHopeLocalAction(env,step.action,localPayload):await executeBackgroundRead(env,mission.user_id,step.action,payload);
       step.status='completed';step.completedAt=now();step.result=result;step.summary=local?summarizeLocalAction(step.action,result):summarizeBackgroundRead(step.action,result);job.context=jobContext(job);job.events.push({at:step.completedAt,type:'mission_step_completed',stepId:step.id,summary:step.summary});executed++;
     }catch(e){step.status='failed';step.error=String(e?.message||e);step.failedAt=now();job.status='failed';job.events.push({at:step.failedAt,type:'mission_step_failed',stepId:step.id,error:step.error});break}
   }
