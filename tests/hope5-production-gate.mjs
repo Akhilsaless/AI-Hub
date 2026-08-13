@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-
 const read=p=>fs.readFileSync(p,'utf8');
 const jobsApi=read('functions/api/user/hope/jobs.js');
 const jobsUi=read('Public/hope-jobs.html');
 const runner=read('functions/lib/hope5-runner.js');
 const planner=read('functions/lib/hope5-jobs.js');
+const reasoning=read('functions/lib/hope5-reasoning.js');
+const executor=read('functions/lib/hope4-executor.js');
 const redirects=read('Public/_redirects');
-
 assert.match(jobsApi,/requireUser/,'HOPE 5 jobs must require an authenticated user');
 assert.match(jobsApi,/WHERE id=\? AND user_id=\?/,'job reads must be user scoped');
 assert.match(jobsApi,/WHERE user_id=\?/,'job listings must be user scoped');
@@ -17,15 +17,23 @@ assert.match(jobsApi,/retryStepId/,'job API must support failed-step retry');
 assert.match(jobsApi,/applyStepPayload/,'job API must support missing-input continuation');
 assert.match(jobsApi,/cancelJob/,'job API must support cancellation');
 assert.match(planner,/slice\(0,8\)/,'planner must cap job fan-out');
+assert.match(planner,/reason_compose_reply/,'planner must insert a reasoning step for chained replies');
+assert.match(planner,/dependsOn/,'planner must record step dependencies');
 assert.match(runner,/confirmationRequired/,'runner must enforce write confirmation');
 assert.match(runner,/capabilities\.includes/,'runner must enforce connector capability access');
 assert.match(runner,/missingFields/,'runner must block incomplete actions');
+assert.match(runner,/executeHopeLocalAction/,'runner must execute local reasoning steps');
+assert.match(runner,/type:'dependency'/,'runner must block unresolved dependencies');
+assert.match(runner,/resolvedPayload/,'runner must resolve chained outputs before approval/execution');
 assert.match(runner,/step_failed/,'runner must retain failure activity');
+assert.match(reasoning,/executeZeroCost/,'reasoning must use the zero-cost adaptive router');
+assert.match(reasoning,/Do not invent facts/,'reasoning must contain anti-fabrication guardrails');
+assert.match(executor,/format=metadata/,'Gmail search must enrich results with message metadata');
+assert.match(executor,/snippet/,'Gmail search must expose source text for downstream reasoning');
 assert.match(jobsUi,/\/api\/user\/hope\/jobs/,'job UI must use authenticated HOPE 5 API');
 assert.match(jobsUi,/Confirm & continue/,'job UI must expose approval continuation');
 assert.match(jobsUi,/Retry failed step/,'job UI must expose retry');
 assert.match(jobsUi,/Cancel/,'job UI must expose cancellation');
 assert.match(jobsUi,/Connect/,'job UI must expose connector recovery');
 assert.match(redirects,/\/hope/,'HOPE route must remain defined');
-
-console.log('PASS hope5-production-gate: tenancy, safety gates, resume/retry/cancel and job UI structurally verified');
+console.log('PASS hope5-production-gate: tenancy, safety, dependencies, reasoning, resume/retry/cancel and job UI structurally verified');
