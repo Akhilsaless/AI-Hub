@@ -6,13 +6,15 @@ const MOODS={normal:'Respond naturally, clearly and directly.',happy:'Sound upbe
 function localFallback(message,mood){
   const text=String(message||'').trim(),m=String(mood||'normal');
   if(/^h+(i+|ello|ey)\b[!. ]*$/i.test(text)){
-    if(m==='funny')return 'Hey 😄 I’m here. What are we getting into?';
+    if(m==='funny')return 'Hey 😂 HOPE reporting for duty. What are we getting into?';
     if(m==='happy')return 'Hey! 😊 I’m here and ready. What do you want to do?';
     if(m==='angry')return 'Hey. I’m here—tell me what we’re tackling.';
     return 'Hey! I’m here. What would you like to do?';
   }
-  if(/^(nothing much|not much|nothing)$/i.test(text))return m==='funny'?'Fair enough 😄 We can professionally do absolutely nothing for a minute. Or give me anything you want to explore.':'No problem. I’m here whenever you want to talk or work on something.';
-  return 'I’m here, but my main AI route had a temporary problem. Please send that once more while I switch routes.';
+  if(/^(nothing much|not much|nothing)$/i.test(text))return m==='funny'?'Fair enough 😂 We can professionally do absolutely nothing for a minute. Or give me anything you want to explore.':'No problem. I’m here whenever you want to talk or work on something.';
+  if(/^(thanks|thank you|thx)[!. ]*$/i.test(text))return m==='funny'?'Anytime 😄 My invoice for emotional support is mysteriously zero.':'Anytime. What do you want to do next?';
+  if(/^(ok+|okay|cool|nice)[!. ]*$/i.test(text))return m==='funny'?'Perfect 😄 I’ll pretend that was a standing ovation. What’s next?':'Got it. What’s next?';
+  return m==='funny'?'I hit a temporary model hiccup 😅 Your message is safe. Send it once more and I’ll take another route.':'I hit a temporary model hiccup. Your message is safe—send it once more and I’ll take another route.';
 }
 
 export async function onRequest(context){
@@ -25,6 +27,8 @@ export async function onRequest(context){
     console.error('HOPE downstream HTTP failure',response.status,await response.clone().text().catch(()=>''));
   }catch(e){console.error('HOPE downstream exception',String(e?.stack||e?.message||e))}
   const message=String(body.message||'').trim(),mood=MOODS[String(body.mood||'normal')]?String(body.mood||'normal'):'normal';
+  // Never make greetings and tiny conversational turns wait on another external provider after the main route already failed.
+  if(message.length<=80&&/^(h+(i+|ello|ey)|yo|good\s+(morning|afternoon|evening)|how are you|how r u|what'?s up|whats up|nothing much|not much|nothing|thanks|thank you|thx|ok+|okay|cool|nice)[!.? ]*$/i.test(message))return json({ok:true,threadId:String(body.threadId||''),text:localFallback(message,mood),mood,route:'hope-local-resilience',recovered:true});
   try{
     const r=await executeZeroCost(env,[{role:'system',content:`You are HOPE. ${MOODS[mood]} Answer the user directly. Do not mention routing, providers, backend errors, or this fallback.`},{role:'user',content:message}],'normal');
     if(r.ok&&String(r.text||'').trim())return json({ok:true,threadId:String(body.threadId||''),text:String(r.text).trim(),mood,provider:r.provider,model:r.model,route:'hope-resilience-fallback',recovered:true});
