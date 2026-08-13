@@ -1,0 +1,26 @@
+import {getUserConnectorSecret,ensureUserConnectors} from './user-connectors.js';
+
+const PROVIDERS={
+ openrouter:{base:'https://openrouter.ai/api/v1',model:'openrouter/free'},
+ groq:{base:'https://api.groq.com/openai/v1',model:'llama-3.3-70b-versatile'},
+ gemini:{model:'gemini-2.0-flash'},
+ deepseek:{base:'https://api.deepseek.com',model:'deepseek-chat'},
+ together:{base:'https://api.together.xyz/v1',model:'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free'},
+ fireworks:{base:'https://api.fireworks.ai/inference/v1',model:'accounts/fireworks/models/llama-v3p1-8b-instruct'},
+ deepinfra:{base:'https://api.deepinfra.com/v1/openai',model:'meta-llama/Llama-3.1-8B-Instruct'},
+ cerebras:{base:'https://api.cerebras.ai/v1',model:'llama-3.3-70b'}
+};
+const clean=v=>String(v||'').replace(/\/$/,'');
+function parts(text,attachments=[]){const out=[{type:'text',text:String(text||'')}];for(const a of attachments){if(!a?.data)continue;if(/^image\//.test(a.type||''))out.push({type:'image_url',image_url:{url:`data:${a.type};base64,${a.data}`}})}return out}
+function geminiParts(text,attachments=[]){const out=[{text:String(text||'')}];for(const a of attachments){if(a?.data&&(/^(image\/|application\/pdf)/.test(a.type||'')))out.push({inlineData:{mimeType:a.type,data:a.data}})}return out}
+async function rows(env,userId){await ensureUserConnectors(env);const r=await env.DB.prepare(`SELECT connector_id,metadata,status FROM user_connectors WHERE user_id=? AND status='connected'`).bind(userId).all();return (r.results||[]).filter(x=>PROVIDERS[x.connector_id]).map(x=>{let m={};try{m=JSON.parse(x.metadata||'{}')}catch{}return {...x,metadata:m}})}
+async function invoke(env,userId,row,{system='',messages=[],attachments=[]}){const id=row.connector_id,cfg=PROVIDERS[id],token=await getUserConnectorSecret(env,userId,id);if(!token)throw new Error(`${id} credential unavailable`);const model=row.metadata?.preferredModel||row.metadata?.model||cfg.model;const last=[...messages].reverse().find(x=>x.role==='user')?.content||'';
+ if(id==='gemini'){
+   const contents=[];if(system)contents.push({role:'user',parts:[{text:`SYSTEM INSTRUCTIONS:\n${system}`}]});for(const m of messages){contents.push({role:m.role==='assistant'?'model':'user',parts:m.role==='user'&&m.content===last?geminiParts(m.content,attachments):[{text:String(m.content||'')}]})}
+   const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(token)}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({contents,generationConfig:{temperature:.5}})});const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d?.error?.message||`Gemini HTTP ${res.status}`);return {text:(d?.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('\n').trim(),provider:id,model};
+ }
+ const base=clean(row.metadata?.endpoint||cfg.base),payload=[];if(system)payload.push({role:'system',content:system});for(const m of messages){payload.push({role:m.role,content:m.role==='user'&&m.content===last&&attachments.some(a=>a?.data&&/^image\//.test(a.type||''))?parts(m.content,attachments):String(m.content||'')})}
+ const res=await fetch(`${base}/chat/completions`,{method:'POST',headers:{'content-type':'application/json','authorization':`Bearer ${token}`},body:JSON.stringify({model,messages:payload,temperature:.5})});const d=await res.json().catch(()=>({}));if(!res.ok)throw new Error(d?.error?.message||d?.error||`${id} HTTP ${res.status}`);return {text:String(d?.choices?.[0]?.message?.content||'').trim(),provider:id,model};
+}
+export async function executeUserModels(env,user,{system='',messages=[],attachments=[]}={}){const connected=await rows(env,user.id),attempts=[];for(const row of connected){const started=Date.now();try{const r=await invoke(env,user.id,row,{system,messages,attachments});if(r.text)return {ok:true,...r,source:'user-connector',latencyMs:Date.now()-started,attempts}}catch(e){attempts.push({provider:row.connector_id,error:String(e?.message||e)})}}return {ok:false,error:'No connected user model completed the request.',attempts,connected:connected.length}}
+export async function userModelStatus(env,user){const connected=await rows(env,user.id);return connected.map(x=>({provider:x.connector_id,model:x.metadata?.preferredModel||x.metadata?.model||PROVIDERS[x.connector_id]?.model,status:'connected'}))}
