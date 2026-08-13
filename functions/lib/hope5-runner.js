@@ -3,13 +3,40 @@ import {jobProgress,nextJobStep,safeToAutoRun} from './hope5-jobs.js';
 
 const now=()=>new Date().toISOString();
 const terminal=s=>['completed','cancelled'].includes(s);
+const pathGet=(value,path='')=>String(path||'').split('.').filter(Boolean).reduce((v,k)=>v==null?undefined:v[k],value);
+const stringify=v=>typeof v==='string'?v:JSON.stringify(v??'');
 
 export function normalizeJob(job){
   const copy=structuredClone(job||{});
   copy.steps=Array.isArray(copy.steps)?copy.steps:[];
   copy.events=Array.isArray(copy.events)?copy.events:[];
+  copy.context=copy.context&&typeof copy.context==='object'?copy.context:{};
   copy.updatedAt=now();
   return copy;
+}
+
+export function jobContext(job){
+  const ctx={};
+  for(const step of job?.steps||[]){
+    if(step.status!=='completed')continue;
+    ctx[step.id]={action:step.action,objective:step.objective,summary:step.summary||'',result:step.result??null};
+  }
+  return ctx;
+}
+
+export function resolveStepPayload(job,step){
+  const ctx=jobContext(job),previous=(job.steps||[]).filter(x=>x.status==='completed').at(-1)||null;
+  const replace=s=>String(s).replace(/\{\{\s*([^}]+)\s*\}\}/g,(_,expr)=>{
+    const key=String(expr).trim();
+    if(key==='previous.summary')return previous?.summary||'';
+    if(key==='previous.result')return stringify(previous?.result);
+    if(key.startsWith('previous.result.'))return stringify(pathGet(previous?.result,key.slice('previous.result.'.length)));
+    const [stepId,...rest]=key.split('.'),root=ctx[stepId];
+    if(!root)return '';
+    return stringify(pathGet(root,rest.join('.')));
+  });
+  const walk=v=>Array.isArray(v)?v.map(walk):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,x])=>[k,walk(x)])):typeof v==='string'?replace(v):v;
+  return walk(step?.payload||{});
 }
 
 export function applyStepPayload(job,stepId,payload={}){
@@ -45,16 +72,18 @@ export async function advanceJob(request,env,job,capabilities=[],options={}){
     if(step.missingFields?.length){
       step.status='needs_input';j.status='needs_input';j.block={type:'input',stepId:step.id,missingFields:step.missingFields};break
     }
+    const resolvedPayload=resolveStepPayload(j,step);step.resolvedPayload=resolvedPayload;
     if(step.confirmationRequired&&!confirmed.has(step.id)){
-      step.status='awaiting_confirmation';j.status='awaiting_confirmation';j.block={type:'confirmation',stepId:step.id,action:step.action,preview:step.payload||{}};break
+      step.status='awaiting_confirmation';j.status='awaiting_confirmation';j.block={type:'confirmation',stepId:step.id,action:step.action,preview:resolvedPayload};break
     }
     if(!safeToAutoRun(step)&&!confirmed.has(step.id)){
-      j.status='awaiting_confirmation';j.block={type:'confirmation',stepId:step.id,action:step.action,preview:step.payload||{}};break
+      j.status='awaiting_confirmation';j.block={type:'confirmation',stepId:step.id,action:step.action,preview:resolvedPayload};break
     }
     try{
       step.status='executing';step.startedAt=now();j.events.push({at:step.startedAt,type:'step_started',stepId:step.id,action:step.action});
-      const result=await executeHopeAction(request,env,step.action,step.payload||{});
+      const result=await executeHopeAction(request,env,step.action,resolvedPayload);
       step.status='completed';step.completedAt=now();step.summary=summarizeActionResult(step.action,result);step.result=result;
+      j.context=jobContext(j);
       j.events.push({at:step.completedAt,type:'step_completed',stepId:step.id,summary:step.summary});executed++;
     }catch(e){
       step.status='failed';step.failedAt=now();step.error=String(e?.message||e);j.status='failed';j.events.push({at:step.failedAt,type:'step_failed',stepId:step.id,error:step.error});break
