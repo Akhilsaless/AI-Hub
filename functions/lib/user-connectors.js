@@ -1,12 +1,20 @@
 import {encryptStoredKey,decryptStoredKey} from './vault.js';
 export const CONNECTOR_CATALOG=[
-{id:'google',name:'Google',auth:'oauth',capabilities:['gmail','calendar'],plans:['free','pro','builder','teams']},
-{id:'github',name:'GitHub',auth:'oauth',capabilities:['repos','issues','pull_requests'],plans:['pro','builder','teams']},
-{id:'openrouter',name:'OpenRouter',auth:'oauth',capabilities:['models'],plans:['free','pro','builder','teams']},
-{id:'slack',name:'Slack',auth:'oauth_future',capabilities:['messages','channels'],plans:['builder','teams']},
-{id:'notion',name:'Notion',auth:'oauth_future',capabilities:['pages','databases'],plans:['pro','builder','teams']},
-{id:'drive',name:'Google Drive',auth:'oauth_future',capabilities:['files','search'],plans:['pro','builder','teams']},
-{id:'whatsapp',name:'WhatsApp Business',auth:'api_key',capabilities:['messages'],plans:['builder','teams']}
+{id:'google',name:'Google',kind:'app',auth:'oauth',capabilities:['gmail','calendar'],plans:['free','pro','builder','teams'],connectLabel:'Connect Google'},
+{id:'github',name:'GitHub',kind:'app',auth:'oauth',capabilities:['repos','issues','pull_requests'],plans:['pro','builder','teams'],connectLabel:'Connect GitHub'},
+{id:'openrouter',name:'OpenRouter',kind:'model_provider',auth:'oauth_exchange',capabilities:['models','free_models','credits'],plans:['free','pro','builder','teams'],connectLabel:'Connect OpenRouter'},
+{id:'huggingface',name:'Hugging Face',kind:'model_provider',auth:'oauth',capabilities:['models','inference'],plans:['free','pro','builder','teams'],connectLabel:'Connect Hugging Face'},
+{id:'groq',name:'Groq',kind:'model_provider',auth:'api_key',capabilities:['models','free_tier'],plans:['free','pro','builder','teams'],connectLabel:'Add Groq key',keyHelp:'Create an API key in GroqCloud, then paste it once. AI Hub encrypts it.'},
+{id:'gemini',name:'Google Gemini API',kind:'model_provider',auth:'api_key',capabilities:['models','free_tier'],plans:['free','pro','builder','teams'],connectLabel:'Add Gemini key',keyHelp:'Create a Gemini API key in Google AI Studio, then paste it once. AI Hub encrypts it.'},
+{id:'deepseek',name:'DeepSeek',kind:'model_provider',auth:'api_key',capabilities:['models'],plans:['free','pro','builder','teams'],connectLabel:'Add DeepSeek key'},
+{id:'together',name:'Together AI',kind:'model_provider',auth:'api_key',capabilities:['models'],plans:['free','pro','builder','teams'],connectLabel:'Add Together key'},
+{id:'fireworks',name:'Fireworks AI',kind:'model_provider',auth:'api_key',capabilities:['models'],plans:['free','pro','builder','teams'],connectLabel:'Add Fireworks key'},
+{id:'deepinfra',name:'DeepInfra',kind:'model_provider',auth:'api_key',capabilities:['models'],plans:['free','pro','builder','teams'],connectLabel:'Add DeepInfra key'},
+{id:'cerebras',name:'Cerebras',kind:'model_provider',auth:'api_key',capabilities:['models'],plans:['free','pro','builder','teams'],connectLabel:'Add Cerebras key'},
+{id:'slack',name:'Slack',kind:'app',auth:'oauth_future',capabilities:['messages','channels'],plans:['builder','teams'],connectLabel:'Coming soon'},
+{id:'notion',name:'Notion',kind:'app',auth:'oauth_future',capabilities:['pages','databases'],plans:['pro','builder','teams'],connectLabel:'Coming soon'},
+{id:'drive',name:'Google Drive',kind:'app',auth:'oauth_future',capabilities:['files','search'],plans:['pro','builder','teams'],connectLabel:'Coming soon'},
+{id:'whatsapp',name:'WhatsApp Business',kind:'app',auth:'api_key',capabilities:['messages'],plans:['builder','teams'],connectLabel:'Add credentials'}
 ];
 export async function ensureUserConnectors(env){await env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_connectors(user_id TEXT NOT NULL,connector_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'disconnected',account_label TEXT,scopes TEXT NOT NULL DEFAULT '[]',token_cipher TEXT,iv TEXT,metadata TEXT NOT NULL DEFAULT '{}',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,connector_id))`).run()}
 export function connector(id){return CONNECTOR_CATALOG.find(x=>x.id===String(id||''))||null}
