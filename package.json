@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/release-saas-smoke.mjs && node tests/hope5-jobs-smoke.mjs",
+    "test": "node tests/release-saas-smoke.mjs && node tests/hope5-jobs-smoke.mjs && node tests/hope5-production-gate.mjs",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
