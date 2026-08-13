@@ -1,0 +1,47 @@
+import {requireUser} from '../../../lib/user-auth.js';
+import {parseSchedule} from '../../../lib/automation-schedule.js';
+import {buildJob} from '../../../lib/hope5-jobs.js';
+import {userToolContext} from '../../../lib/user-tool-context.js';
+
+const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
+const now=()=>new Date().toISOString();
+
+async function ensure(env){
+  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_hope_missions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,title TEXT NOT NULL,objective TEXT NOT NULL,schedule TEXT NOT NULL,recurrence TEXT,next_run_at TEXT,status TEXT NOT NULL DEFAULT 'active',approval_mode TEXT NOT NULL DEFAULT 'writes',enabled INTEGER NOT NULL DEFAULT 1,last_run_at TEXT,run_count INTEGER NOT NULL DEFAULT 0,failure_count INTEGER NOT NULL DEFAULT 0,last_result TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL)`).run();
+  await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_hope_missions_due ON user_hope_missions(enabled,status,next_run_at)`).run();
+}
+function expose(row){let result=null;try{result=row.last_result?JSON.parse(row.last_result):null}catch{}return {id:row.id,title:row.title,objective:row.objective,schedule:row.schedule,recurrence:row.recurrence,nextRunAt:row.next_run_at,status:row.status,approvalMode:row.approval_mode,enabled:!!row.enabled,lastRunAt:row.last_run_at,runCount:row.run_count||0,failureCount:row.failure_count||0,lastResult:result,createdAt:row.created_at,updatedAt:row.updated_at}}
+
+export async function onRequestGet({request,env}){
+  const a=await requireUser(request,env);if(a.response)return a.response;await ensure(env);
+  const r=await env.DB.prepare(`SELECT * FROM user_hope_missions WHERE user_id=? ORDER BY created_at DESC LIMIT 50`).bind(a.user.id).all();
+  return json({ok:true,version:'HOPE 6.0',missions:(r.results||[]).map(expose)});
+}
+
+export async function onRequestPost({request,env}){
+  const a=await requireUser(request,env);if(a.response)return a.response;await ensure(env);
+  const b=await request.json().catch(()=>({})),objective=String(b.objective||'').trim(),title=String(b.title||objective).trim().slice(0,160),schedule=String(b.schedule||'').trim(),approvalMode=['all','writes','none'].includes(b.approvalMode)?b.approvalMode:'writes';
+  if(!objective)return json({ok:false,error:'objective required'},400);if(!schedule)return json({ok:false,error:'schedule required'},400);
+  let parsed;try{parsed=parseSchedule(schedule)}catch(e){return json({ok:false,error:e.message},400)}
+  const ctx=await userToolContext(request,env),preview=buildJob(objective,ctx.capabilities),id=crypto.randomUUID(),t=now();
+  if(approvalMode==='none'&&preview.steps.some(x=>x.confirmationRequired))return json({ok:false,error:'External write steps cannot run with approvalMode none. Use writes or all.'},400);
+  await env.DB.prepare(`INSERT INTO user_hope_missions(id,user_id,title,objective,schedule,recurrence,next_run_at,status,approval_mode,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,1,?,?)`).bind(id,a.user.id,title,objective,schedule,parsed.recurrence,parsed.nextRunAt,'active',approvalMode,t,t).run();
+  return json({ok:true,version:'HOPE 6.0',mission:{id,title,objective,schedule,recurrence:parsed.recurrence,nextRunAt:parsed.nextRunAt,status:'active',approvalMode,enabled:true},preview:{steps:preview.steps.map(x=>({id:x.id,action:x.action,objective:x.objective,confirmationRequired:x.confirmationRequired,local:!!x.local,dependsOn:x.dependsOn||[]})),summary:preview.summary},connectedCapabilities:ctx.capabilities});
+}
+
+export async function onRequestPatch({request,env}){
+  const a=await requireUser(request,env);if(a.response)return a.response;await ensure(env);
+  const b=await request.json().catch(()=>({})),id=String(b.id||'');if(!id)return json({ok:false,error:'id required'},400);
+  const row=await env.DB.prepare(`SELECT * FROM user_hope_missions WHERE id=? AND user_id=?`).bind(id,a.user.id).first();if(!row)return json({ok:false,error:'mission not found'},404);
+  const enabled=b.enabled===undefined?!!row.enabled:!!b.enabled,status=enabled?'active':'paused';
+  let schedule=row.schedule,recurrence=row.recurrence,nextRunAt=row.next_run_at;if(b.schedule!==undefined){schedule=String(b.schedule||'').trim();let p;try{p=parseSchedule(schedule)}catch(e){return json({ok:false,error:e.message},400)}recurrence=p.recurrence;nextRunAt=p.nextRunAt}
+  const approvalMode=b.approvalMode===undefined?row.approval_mode:String(b.approvalMode);if(!['all','writes','none'].includes(approvalMode))return json({ok:false,error:'invalid approvalMode'},400);
+  const title=b.title===undefined?row.title:String(b.title||'').trim().slice(0,160),objective=b.objective===undefined?row.objective:String(b.objective||'').trim();
+  await env.DB.prepare(`UPDATE user_hope_missions SET title=?,objective=?,schedule=?,recurrence=?,next_run_at=?,status=?,approval_mode=?,enabled=?,updated_at=? WHERE id=? AND user_id=?`).bind(title,objective,schedule,recurrence,nextRunAt,status,approvalMode,enabled?1:0,now(),id,a.user.id).run();
+  const updated=await env.DB.prepare(`SELECT * FROM user_hope_missions WHERE id=? AND user_id=?`).bind(id,a.user.id).first();return json({ok:true,version:'HOPE 6.0',mission:expose(updated)});
+}
+
+export async function onRequestDelete({request,env}){
+  const a=await requireUser(request,env);if(a.response)return a.response;await ensure(env);const id=new URL(request.url).searchParams.get('id');if(!id)return json({ok:false,error:'id required'},400);
+  await env.DB.prepare(`DELETE FROM user_hope_missions WHERE id=? AND user_id=?`).bind(id,a.user.id).run();return json({ok:true});
+}
