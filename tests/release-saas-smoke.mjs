@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';
+const read=p=>fs.readFileSync(p,'utf8');
+const account=read('Public/account.html'),chat=read('Public/chat.html'),api=read('functions/api/user/hope/chat.js'),owner=read('functions/api/agents/chat.js'),ctx=read('functions/lib/user-tool-context.js'),conn=read('functions/lib/user-connectors.js');
+assert.match(account,/href="\/chat\.html"/,'customer dashboard must route to tenant HOPE');
+assert.doesNotMatch(account,/href="\/hope\.html">HOPE/,'customer dashboard must not route to owner HOPE');
+assert.match(chat,/\/api\/user\/hope\/chat/,'customer UI must call user HOPE endpoint');
+assert.match(api,/requireUser/,'customer HOPE must require a SaaS user');
+assert.doesNotMatch(api,/requireOwner/,'customer HOPE must never require owner auth');
+assert.match(api,/WHERE user_id=\?/,'customer history/memory queries must be user scoped');
+assert.match(api,/consume\(env,a\.user,'hope_daily'/,'HOPE usage must be plan enforced');
+assert.match(api,/userToolContext\(request,env\)/,'HOPE must resolve customer connector context');
+assert.match(owner,/requireOwner/,'owner HOPE must remain owner protected');
+assert.match(ctx,/getUserConnectorSecret\(env,user\.id,connectorId\)/,'connector secrets must resolve by current user');
+assert.match(conn,/PRIMARY KEY\(user_id,connector_id\)/,'connector records must be tenant keyed');
+assert.match(conn,/token_cipher/,'connector secrets must be encrypted at rest');
+console.log('PASS release-saas-smoke: tenant HOPE, owner separation, quotas and connector isolation structurally verified');
