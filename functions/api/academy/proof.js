@@ -1,4 +1,55 @@
-import {requireUser} from '../../lib/user-auth.js';import {arena} from '../../lib/academy-arena.js';import {evaluateProof} from '../../lib/academy-proof-engine.js';
+import {requireUser} from '../../lib/user-auth.js';
+import {arena} from '../../lib/academy-arena.js';
+import {evaluateProof} from '../../lib/academy-proof-engine.js';
+
 const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
-async function ensure(env){await env.DB.batch([env.DB.prepare(`CREATE TABLE IF NOT EXISTS academy_proofs(user_id TEXT NOT NULL,arena_id TEXT NOT NULL,attempt_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'started',score INTEGER NOT NULL DEFAULT 0,verified INTEGER NOT NULL DEFAULT 0,evidence TEXT NOT NULL DEFAULT '{}',feedback TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,attempt_id))`),env.DB.prepare(`CREATE TABLE IF NOT EXISTS academy_profiles(user_id TEXT PRIMARY KEY,xp INTEGER NOT NULL DEFAULT 0,streak INTEGER NOT NULL DEFAULT 0,last_active TEXT,skill_scores TEXT NOT NULL DEFAULT '{}',updated_at TEXT NOT NULL)`)])}
-export async function onRequestPost({request,env}){const au=await requireUser(request,env);if(au.response)return au.response;await ensure(env);const b=await request.json().catch(()=>({})),a=arena(String(b.arenaId||''));if(!a)return json({ok:false,error:'Unknown proof arena'},404);const evidence=b.evidence||{},response=String(evidence.response||'').trim();if(response.length<40)return json({ok:false,error:'Show enough of your work to evaluate it.'},400);const grade=await evaluateProof(env,{arenaId:a.id,evidence,liveContext:b.liveContext||null}),now=new Date().toISOString(),attemptId=crypto.randomUUID(),feedback=grade.feedback||(grade.verified?'Verified proof: this strengthens your Skill Passport.':grade.passed?'Passed, but stronger real verification is needed for verified status.':'Not yet. Improve the weakest rubric areas and retry.');await env.DB.prepare(`INSERT INTO academy_proofs(user_id,arena_id,attempt_id,status,score,verified,evidence,feedback,created_at,updated_at) VALUES(?,?,?,'completed',?,?,?,?,?,?)`).bind(au.user.id,a.id,attemptId,grade.score,grade.verified?1:0,JSON.stringify({...evidence,evaluation:{method:grade.method,scores:grade.scores,verifiedEvidence:grade.verifiedEvidence,evaluator:grade.evaluator}}),feedback,now,now).run();const p=await env.DB.prepare(`SELECT skill_scores FROM academy_profiles WHERE user_id=?`).bind(au.user.id).first(),skills=JSON.parse(p?.skill_scores||'{}'),old=Number(skills[a.skill]||0),candidate=grade.verified?grade.score:grade.passed?Math.round(grade.score*.68):Math.round(grade.score*.35),skills[a.skill]=Math.max(old,candidate);await env.DB.prepare(`INSERT INTO academy_profiles(user_id,xp,streak,last_active,skill_scores,updated_at) VALUES(?,0,0,?,?,?) ON CONFLICT(user_id) DO UPDATE SET skill_scores=excluded.skill_scores,updated_at=excluded.updated_at`).bind(au.user.id,now,JSON.stringify(skills),now).run();return json({ok:true,attemptId,arena:a.id,skill:a.skill,score:grade.score,passed:grade.passed,verified:grade.verified,method:grade.method,scores:grade.scores,feedback,skillScore:skills[a.skill]})}
+
+async function ensure(env){
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS academy_proofs(user_id TEXT NOT NULL,arena_id TEXT NOT NULL,attempt_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'started',score INTEGER NOT NULL DEFAULT 0,verified INTEGER NOT NULL DEFAULT 0,evidence TEXT NOT NULL DEFAULT '{}',feedback TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,attempt_id))`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS academy_profiles(user_id TEXT PRIMARY KEY,xp INTEGER NOT NULL DEFAULT 0,streak INTEGER NOT NULL DEFAULT 0,last_active TEXT,skill_scores TEXT NOT NULL DEFAULT '{}',updated_at TEXT NOT NULL)`)
+  ]);
+}
+
+export async function onRequestPost({request,env}){
+  const au=await requireUser(request,env);
+  if(au.response)return au.response;
+  await ensure(env);
+
+  const b=await request.json().catch(()=>({}));
+  const a=arena(String(b.arenaId||''));
+  if(!a)return json({ok:false,error:'Unknown proof arena'},404);
+
+  const evidence=b.evidence||{};
+  const response=String(evidence.response||'').trim();
+  if(response.length<40)return json({ok:false,error:'Show enough of your work to evaluate it.'},400);
+
+  const grade=await evaluateProof(env,{arenaId:a.id,evidence,liveContext:b.liveContext||null});
+  const now=new Date().toISOString();
+  const attemptId=crypto.randomUUID();
+  const feedback=grade.feedback||(grade.verified?'Verified proof: this strengthens your Skill Passport.':grade.passed?'Passed, but stronger real verification is needed for verified status.':'Not yet. Improve the weakest rubric areas and retry.');
+
+  await env.DB.prepare(`INSERT INTO academy_proofs(user_id,arena_id,attempt_id,status,score,verified,evidence,feedback,created_at,updated_at) VALUES(?,?,?,'completed',?,?,?,?,?,?)`)
+    .bind(
+      au.user.id,
+      a.id,
+      attemptId,
+      grade.score,
+      grade.verified?1:0,
+      JSON.stringify({...evidence,evaluation:{method:grade.method,scores:grade.scores,verifiedEvidence:grade.verifiedEvidence,evaluator:grade.evaluator}}),
+      feedback,
+      now,
+      now
+    ).run();
+
+  const profile=await env.DB.prepare(`SELECT skill_scores FROM academy_profiles WHERE user_id=?`).bind(au.user.id).first();
+  const skillScores=JSON.parse(profile?.skill_scores||'{}');
+  const old=Number(skillScores[a.skill]||0);
+  const candidate=grade.verified?grade.score:grade.passed?Math.round(grade.score*.68):Math.round(grade.score*.35);
+  skillScores[a.skill]=Math.max(old,candidate);
+
+  await env.DB.prepare(`INSERT INTO academy_profiles(user_id,xp,streak,last_active,skill_scores,updated_at) VALUES(?,0,0,?,?,?) ON CONFLICT(user_id) DO UPDATE SET skill_scores=excluded.skill_scores,updated_at=excluded.updated_at`)
+    .bind(au.user.id,now,JSON.stringify(skillScores),now).run();
+
+  return json({ok:true,attemptId,arena:a.id,skill:a.skill,score:grade.score,passed:grade.passed,verified:grade.verified,method:grade.method,scores:grade.scores,feedback,skillScore:skillScores[a.skill]});
+}
