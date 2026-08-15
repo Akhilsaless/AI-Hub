@@ -1,4 +1,4 @@
-import {executeZeroCost} from '../../../lib/router-execute.js';
+import {executeHopeGateway} from '../../../lib/hope-gateway.js';
 
 const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const MOODS={normal:'Respond naturally, clearly and directly.',happy:'Sound upbeat, warm and energetic.',funny:'Be genuinely funny in casual conversation while staying useful and accurate.',angry:'Use a fiery, impatient, sharp-witted tone without insulting or threatening anyone.'};
@@ -28,10 +28,10 @@ export async function onRequest(context){
   }catch(e){console.error('HOPE downstream exception',String(e?.stack||e?.message||e))}
   const message=String(body.message||'').trim(),mood=MOODS[String(body.mood||'normal')]?String(body.mood||'normal'):'normal';
   // Never make greetings and tiny conversational turns wait on another external provider after the main route already failed.
-  if(message.length<=80&&/^(h+(i+|ello|ey)|yo|good\s+(morning|afternoon|evening)|how are you|how r u|what'?s up|whats up|nothing much|not much|nothing|thanks|thank you|thx|ok+|okay|cool|nice)[!.? ]*$/i.test(message))return json({ok:true,threadId:String(body.threadId||''),text:localFallback(message,mood),mood,route:'hope-local-resilience',recovered:true});
+  if(message.length<=80&&/^(h+(i+|ello|ey)|yo|good\s+(morning|afternoon|evening)|how are you|how r u|what'?s up|whats up|nothing much|not much|nothing|thanks|thank you|thx|ok+|okay|cool|nice)[!.? ]*$/i.test(message))return json({ok:true,threadId:String(body.threadId||''),text:localFallback(message,mood),mood,recovered:true});
   try{
-    const r=await executeZeroCost(env,[{role:'system',content:`You are HOPE. ${MOODS[mood]} Answer the user directly. Do not mention routing, providers, backend errors, or this fallback.`},{role:'user',content:message}],'normal');
-    if(r.ok&&String(r.text||'').trim())return json({ok:true,threadId:String(body.threadId||''),text:String(r.text).trim(),mood,provider:r.provider,model:r.model,route:'hope-resilience-fallback',recovered:true});
+    const r=await executeHopeGateway(env,{user:{id:'resilience'},threadId:String(body.threadId||''),prompt:message,intent:'conversation',system:`You are HOPE. ${MOODS[mood]} Answer the user directly. Do not mention routing, providers, backend errors, or this fallback.`,messages:[{role:'user',content:message}]});
+    if(r.ok&&String(r.text||'').trim())return json({ok:true,threadId:String(body.threadId||''),text:String(r.text).trim(),mood,recovered:true});
   }catch(e){console.error('HOPE resilience route failed',String(e?.message||e))}
-  return json({ok:true,threadId:String(body.threadId||''),text:localFallback(message,mood),mood,route:'hope-local-resilience',recovered:true});
+  return json({ok:true,threadId:String(body.threadId||''),text:localFallback(message,mood),mood,recovered:true});
 }

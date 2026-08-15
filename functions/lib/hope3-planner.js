@@ -1,4 +1,4 @@
-import {executeZeroCost} from './router-execute.js';
+import {executeHopeGateway} from './hope-gateway.js';
 const clean=v=>String(v||'').trim();
 const specialistRules=[
   ['research',/\b(research|latest|current|sources?|competitors?|market|news)\b/i],
@@ -26,7 +26,7 @@ export async function createExecutionPlan(env,{objective,intent='answer',context
   const goal=clean(objective);if(!goal)throw new Error('objective is required');
   const specialists=selectSpecialists(goal,intent);
   const prompt=`Create a compact execution plan for HOPE 3. Return ONLY valid JSON with keys summary,steps,successCriteria,risks. steps must be an array of 3-7 objects with id,title,specialist,requiresVerification,requiresApproval. Do not claim any step has run. Objective: ${goal}\nIntent: ${intent}\nAvailable specialists: ${specialists.join(', ')||'general'}\nRelevant context: ${JSON.stringify(context).slice(0,5000)}`;
-  const r=await executeZeroCost(env,[{role:'system',content:'You are HOPE 3 Planner. Plan work; never pretend to execute it. Prefer minimal safe steps and explicit verification.'},{role:'user',content:prompt}],'hard');
+  const r=await executeHopeGateway(env,{user:{id:'hope-planner'},prompt:goal,intent:'strategy',system:'You are HOPE 3 Planner. Plan work; never pretend to execute it. Prefer minimal safe steps and explicit verification.',messages:[{role:'user',content:prompt}]});
   if(r.ok){try{const raw=clean(r.text).replace(/^```json\s*/i,'').replace(/```$/,'').trim(),parsed=JSON.parse(raw);if(Array.isArray(parsed.steps)&&parsed.steps.length)return {...parsed,specialists,generatedBy:{provider:r.provider,model:r.model}}}catch{}}
   return {summary:`Execution plan for: ${goal}`,steps:fallbackSteps(goal,intent).map((title,i)=>({id:i+1,title,specialist:specialists[Math.min(i,specialists.length-1)]||'general',requiresVerification:i>1,requiresApproval:intent==='action'&&i===2})),successCriteria:['Requested outcome is satisfied','No success is claimed without verification'],risks:['Tool or model failure','Insufficient context'],specialists,generatedBy:{provider:'hope',model:'deterministic-fallback'}};
 }

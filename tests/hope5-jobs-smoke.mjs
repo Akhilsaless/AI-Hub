@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import {buildJob,jobProgress,safeToAutoRun} from '../functions/lib/hope5-jobs.js';
+import {buildJob,jobProgress,safeToAutoRun,JOB_VERSION} from '../functions/lib/hope5-jobs.js';
 import {applyStepPayload,cancelJob,normalizeJob} from '../functions/lib/hope5-runner.js';
 
 const job=buildJob('Search my Gmail for invoice emails then create a calendar event called Review 2026-08-14T10:00:00Z 2026-08-14T10:30:00Z',['gmail','calendar']);
-assert.equal(job.version,'HOPE 5.0');
+assert.equal(job.version,JOB_VERSION);
 assert.equal(job.steps.length,2,'multi-step objective should produce two actionable steps');
 assert.equal(job.steps[0].action,'gmail_search');
 assert.equal(job.steps[1].action,'calendar_create');

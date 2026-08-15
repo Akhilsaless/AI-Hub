@@ -26,7 +26,7 @@ assert.match(runner,/executeHopeLocalAction/,'runner must execute local reasonin
 assert.match(runner,/type:'dependency'/,'runner must block unresolved dependencies');
 assert.match(runner,/resolvedPayload/,'runner must resolve chained outputs before approval/execution');
 assert.match(runner,/step_failed/,'runner must retain failure activity');
-assert.match(reasoning,/executeZeroCost/,'reasoning must use the zero-cost adaptive router');
+assert.match(reasoning,/executeHopeGateway/,'reasoning must use the shared HOPE gateway');
 assert.match(reasoning,/Do not invent facts/,'reasoning must contain anti-fabrication guardrails');
 assert.match(executor,/format=metadata/,'Gmail search must enrich results with message metadata');
 assert.match(executor,/snippet/,'Gmail search must expose source text for downstream reasoning');

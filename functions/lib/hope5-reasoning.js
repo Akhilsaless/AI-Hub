@@ -1,4 +1,4 @@
-import {executeZeroCost} from './router-execute.js';
+import {executeHopeGateway} from './hope-gateway.js';
 
 export const LOCAL_ACTIONS={reason_compose_reply:{risk:'reason',confirmation:false,local:true}};
 
@@ -13,7 +13,7 @@ export async function executeHopeLocalAction(env,action,p={}){
     {role:'system',content:'You are HOPE. Draft a concise, natural email reply using the supplied source message, user instruction, and relevant prior mission history when provided. Treat prior history only as context: never claim a past outcome is still current unless the new source supports it. Do not invent facts, commitments, dates, prices, attachments, or completed actions. Return only the email body, with no subject line, commentary, markdown fences, metadata, or explanation of memory.'},
     {role:'user',content:`Email subject: ${subject||'(none)'}\nSource message: ${source}\nUser instruction: ${instruction}\nRelevant prior mission history:\n${priorContext||'No relevant prior history.'}`}
   ];
-  const r=await executeZeroCost(env,messages,'normal');
+  const r=await executeHopeGateway(env,{user:{id:'hope-job'},prompt:instruction,intent:'writing',system:messages[0].content,messages:messages.slice(1)});
   if(!r.ok||!String(r.text||'').trim())throw new Error(r.error||'HOPE could not compose the reply');
   return {text:String(r.text).trim(),provider:r.provider,model:r.model};
 }

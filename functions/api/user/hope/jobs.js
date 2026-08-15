@@ -1,6 +1,6 @@
 import {requireUser} from '../../../lib/user-auth.js';
 import {userToolContext} from '../../../lib/user-tool-context.js';
-import {buildJob,jobProgress} from '../../../lib/hope5-jobs.js';
+import {buildJob,jobProgress,JOB_VERSION} from '../../../lib/hope5-jobs.js';
 import {advanceJob,applyStepPayload,cancelJob,normalizeJob} from '../../../lib/hope5-runner.js';
 
 const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
@@ -31,10 +31,10 @@ function expose(id,job){return {id,status:job.status,objective:job.objective,pro
 export async function onRequestGet({request,env}){
   const a=await requireUser(request,env);if(a.response)return a.response;await ensure(env);
   const u=new URL(request.url),id=u.searchParams.get('id');
-  if(id){const row=await load(env,a.user.id,id);if(!row)return json({ok:false,error:'job not found'},404);return json({ok:true,version:'HOPE 5.0',job:expose(row.id,row.job)})}
+  if(id){const row=await load(env,a.user.id,id);if(!row)return json({ok:false,error:'job not found'},404);return json({ok:true,version:JOB_VERSION,job:expose(row.id,row.job)})}
   const r=await env.DB.prepare(`SELECT id,objective,status,job,created_at,updated_at FROM user_hope_jobs WHERE user_id=? ORDER BY updated_at DESC LIMIT 30`).bind(a.user.id).all();
   const jobs=(r.results||[]).map(row=>{let job;try{job=JSON.parse(row.job)}catch{job={objective:row.objective,status:row.status,steps:[]}}return expose(row.id,job)});
-  return json({ok:true,version:'HOPE 5.0',jobs});
+  return json({ok:true,version:JOB_VERSION,jobs});
 }
 
 export async function onRequestPost({request,env}){
@@ -46,7 +46,7 @@ export async function onRequestPost({request,env}){
   job.id=id;job.events.push({at:createdAt,type:'job_created',steps:job.steps.length});
   if(job.steps.length&&b.autoRun!==false){const r=await advanceJob(request,env,job,ctx.capabilities,{maxSteps:8});job=r.job}
   await save(env,a.user.id,id,objective,job,createdAt);
-  return json({ok:true,version:'HOPE 5.0',connectedCapabilities:ctx.capabilities,job:expose(id,job)});
+  return json({ok:true,version:JOB_VERSION,connectedCapabilities:ctx.capabilities,job:expose(id,job)});
 }
 
 export async function onRequestPatch({request,env}){
@@ -59,7 +59,7 @@ export async function onRequestPatch({request,env}){
   const confirmed=[];if(b.confirmStepId)confirmed.push(String(b.confirmStepId));
   const ctx=await userToolContext(request,env),r=await advanceJob(request,env,job,ctx.capabilities,{confirmedStepIds:confirmed,maxSteps:8});job=r.job;
   await save(env,a.user.id,id,row.objective,job);
-  return json({ok:true,version:'HOPE 5.0',connectedCapabilities:ctx.capabilities,executed:r.executed||0,job:expose(id,job)});
+  return json({ok:true,version:JOB_VERSION,connectedCapabilities:ctx.capabilities,executed:r.executed||0,job:expose(id,job)});
 }
 
 export async function onRequestDelete({request,env}){
@@ -67,5 +67,5 @@ export async function onRequestDelete({request,env}){
   const u=new URL(request.url),id=u.searchParams.get('id');if(!id)return json({ok:false,error:'id required'},400);
   const row=await load(env,a.user.id,id);if(!row)return json({ok:false,error:'job not found'},404);
   const job=cancelJob(row.job,'Cancelled by user');await save(env,a.user.id,id,row.objective,job);
-  return json({ok:true,version:'HOPE 5.0',job:expose(id,job)});
+  return json({ok:true,version:JOB_VERSION,job:expose(id,job)});
 }
