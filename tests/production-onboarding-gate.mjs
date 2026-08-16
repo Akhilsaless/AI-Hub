@@ -9,6 +9,10 @@ const login=read('Public/login.html');
 const signup=read('Public/signup.html');
 const status=read('functions/api/status.js');
 const resilience=read('functions/api/user/hope/_middleware.js');
+const rateLimit=read('functions/lib/auth-rate-limit.js');
+const userLogin=read('functions/api/account/login.js');
+const userSignup=read('functions/api/account/signup.js');
+const ownerLogin=read('functions/api/auth/login.js');
 
 assert.match(redirects,/\/chat\.html \/hope 301/,'legacy chat must route to the one active HOPE');
 assert.doesNotMatch(redirects,/\/hope(?:\.html)? \/hope-v3\.html/,'the canonical HOPE route must not be rewritten to the retired v3 shell');
@@ -22,6 +26,14 @@ for(const page of [login,signup]){
 assert.match(status,/if\(await isOwner\(request,env\)\)/,'internal D1 table names must be owner-only');
 assert.match(resilience,/persistRecoveredReply/,'recovered HOPE replies must have a persistence path');
 assert.match(resilience,/persisted/,'recovery responses must report whether persistence succeeded');
+assert.match(rateLimit,/auth_rate_limits/,'authentication attempts must be persisted for abuse control');
+assert.match(rateLimit,/CF-Connecting-IP/,'authentication limits must distinguish network actors');
+for(const endpoint of [userLogin,userSignup,ownerLogin]){
+  assert.match(endpoint,/authRateStatus/,'each authentication entry point must enforce rate limits');
+  assert.match(endpoint,/requireJsonRequest/,'each authentication entry point must require JSON');
+}
+assert.match(userLogin,/password\.length>256/,'login must bound PBKDF2 input work');
+assert.match(userSignup,/password\.length<12\|\|password\.length>256/,'signup must enforce a production password length range');
 
 const password='Correct horse battery staple 2026';
 const stored=await hashPassword(password);
