@@ -77,5 +77,15 @@ jobs:
         env:
           EXPECTED_SHA: ${{ github.sha }}
         run: |
-          curl --fail --silent --show-error --retry 6 --retry-delay 5 https://ai-hub-93x.pages.dev/release.json --output /tmp/ai-hub-release.json
-          node -e "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync('/tmp/ai-hub-release.json','utf8'));if(x.commit!==process.env.EXPECTED_SHA)throw new Error('Production is not serving the expected commit');console.log('Verified production commit',x.commit)"
+          set -euo pipefail
+          for attempt in {1..12}; do
+            curl --fail --silent --show-error \
+              "https://ai-hub-93x.pages.dev/release.json?expected=$EXPECTED_SHA&attempt=$attempt" \
+              --output /tmp/ai-hub-release.json
+            if node -e "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync('/tmp/ai-hub-release.json','utf8'));if(x.commit!==process.env.EXPECTED_SHA){console.log('Waiting for production propagation; currently serving',x.commit);process.exit(1)}console.log('Verified production commit',x.commit)"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Production did not serve the expected commit within 60 seconds"
+          exit 1
