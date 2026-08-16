@@ -1,0 +1,5 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const read=p=>fs.readFileSync(new URL(`../${p}`,import.meta.url),'utf8');
+const lib=read('functions/lib/hyvora-marketing.js'),brand=read('functions/api/marketing/brand.js'),campaigns=read('functions/api/marketing/campaigns.js'),page=read('Public/marketing.html');
+for(const table of ['marketing_brand_profiles','marketing_campaigns','marketing_assets','marketing_publication_jobs','marketing_metrics'])assert.ok(lib.includes(table),`missing ${table}`);
+assert.ok(brand.includes('requireUser'),'Brand API must require a user');assert.ok(campaigns.includes('requireUser'),'Campaign API must require a user');assert.ok(campaigns.includes('executeHopeGateway'),'Campaign strategy must use shared HOPE gateway');assert.ok(campaigns.includes("'before_publish'"),'Campaigns must default to approval before publishing');assert.ok(page.includes('Publishing remains approval-locked'),'UI must communicate publishing boundary');assert.ok(!page.includes('localStorage'),'Marketing state must not depend on browser localStorage');console.log('HYVORA marketing gate passed');
