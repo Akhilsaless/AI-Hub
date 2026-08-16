@@ -31,8 +31,32 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          set -euo pipefail
           test -n "$CLOUDFLARE_API_TOKEN" || (echo "CLOUDFLARE_API_TOKEN is missing from GitHub Actions secrets" && exit 1)
           test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "CLOUDFLARE_ACCOUNT_ID is missing from GitHub Actions secrets" && exit 1)
+          if ! printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | grep -Eq '^[0-9a-fA-F]{32}$'; then
+            echo "CLOUDFLARE_ACCOUNT_ID has an invalid format. It must be the 32-character Account ID from the Cloudflare dashboard URL, not an API token, database ID, or project ID."
+            exit 1
+          fi
+
+      - name: Cloudflare API preflight
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+
+          TOKEN_HTTP=$(curl --silent --show-error --output /tmp/cf-token.json --write-out '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            https://api.cloudflare.com/client/v4/user/tokens/verify)
+          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/cf-token.json','utf8'));if(!x.success){const e=(x.errors||[]).map(v=>String(v.code)+': '+v.message).join('; ');throw new Error('Cloudflare API token verification failed ('+process.argv[1]+'): '+e)};console.log('Cloudflare API token verified as active')" "$TOKEN_HTTP"
+
+          PAGES_HTTP=$(curl --silent --show-error --output /tmp/cf-pages.json --write-out '%{http_code}' \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H 'Content-Type: application/json' \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/ai-hub-93x")
+          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/cf-pages.json','utf8'));if(!x.success){const e=(x.errors||[]).map(v=>String(v.code)+': '+v.message).join('; ');throw new Error('Cloudflare Pages preflight failed ('+process.argv[1]+'): '+e+'. Check that the Account ID belongs to the same account as the token and that the token has Pages Write access.')}console.log('Cloudflare Pages project access verified')" "$PAGES_HTTP"
 
       - name: Stamp release
         run: node -e "require('node:fs').writeFileSync('Public/release.json', JSON.stringify({commit:process.env.GITHUB_SHA, deployedAt:new Date().toISOString()}))"
