@@ -4,27 +4,28 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#080b12">
-  <title>Sign in · HYVORA</title>
+  <title>Create account · HYVORA</title>
   <style>
     *{box-sizing:border-box}body{margin:0;min-height:100dvh;display:grid;place-items:center;background:#080b12;color:#f7f9ff;font:15px Inter,system-ui,sans-serif;padding:20px}.card{width:min(430px,100%);background:#10151f;border:1px solid #263247;border-radius:26px;padding:28px}.logo{font-weight:950;letter-spacing:.12em;color:#77d9ff}h1{font-size:34px;margin:18px 0 8px}.muted{color:#8e9aaf;line-height:1.5}label{display:block;margin-top:17px;font-size:12px;color:#aab4c5}input{width:100%;margin-top:7px;border:1px solid #2b374b;border-radius:14px;background:#0b1019;color:white;padding:14px;font:inherit;outline:none}button{width:100%;margin-top:18px;border:0;border-radius:14px;padding:14px;background:#f7f9ff;color:#071019;font-weight:850;font:inherit;cursor:pointer}.err{color:#ff9b9b;min-height:20px;margin-top:12px}.links{display:flex;justify-content:space-between;margin-top:18px;gap:12px}.links a{color:#77d9ff;text-decoration:none}
   </style>
 </head>
 <body>
-  <form class="card" id="loginForm">
+  <form class="card" id="signupForm">
     <div class="logo">HYVORA · HOPE</div>
-    <h1>Welcome back.</h1>
-    <p class="muted">One account for HOPE, Academy, Projects and your connected apps.</p>
+    <h1>Create your account.</h1>
+    <p class="muted">Start with one HOPE, Academy, Projects and connected apps. Provider selection stays invisible.</p>
+    <label for="name">Name</label><input id="name" autocomplete="name" minlength="2" maxlength="80" required>
     <label for="email">Email</label><input id="email" type="email" autocomplete="email" required>
-    <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required>
-    <button id="submitButton">Sign in</button>
+    <label for="password">Password</label><input id="password" type="password" autocomplete="new-password" minlength="8" required>
+    <button id="submitButton">Create account</button>
     <div class="err" id="errorMessage" aria-live="polite"></div>
-    <div class="links"><a href="/signup.html">Create account</a><a href="/">Owner console</a></div>
+    <div class="links"><a href="/login.html">Already have an account?</a><a href="/">Owner console</a></div>
   </form>
   <script>
     const requestedNext=new URLSearchParams(location.search).get('next')||'/hope';
     const next=requestedNext.startsWith('/')&&!requestedNext.startsWith('//')?requestedNext:'/hope';
     fetch('/api/account/me',{cache:'no-store'}).then(r=>r.json()).then(x=>{if(x.authenticated)location.replace(next)});
-    loginForm.onsubmit=async event=>{event.preventDefault();submitButton.disabled=true;errorMessage.textContent='';try{const response=await fetch('/api/account/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})}),data=await response.json();if(!response.ok)throw Error(data.error||'Sign in failed');location.replace(next)}catch(error){errorMessage.textContent=error.message;submitButton.disabled=false}};
+    signupForm.onsubmit=async event=>{event.preventDefault();submitButton.disabled=true;errorMessage.textContent='';try{const response=await fetch('/api/account/signup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:name.value,email:email.value,password:password.value})}),data=await response.json();if(!response.ok)throw Error(data.error||'Account creation failed');location.replace(next)}catch(error){errorMessage.textContent=error.message;submitButton.disabled=false}};
   </script>
 </body>
 </html>

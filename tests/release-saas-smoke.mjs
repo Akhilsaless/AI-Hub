@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';import fs from 'node:fs';
 const read=p=>fs.readFileSync(p,'utf8');
-const account=read('Public/account.html'),chat=read('Public/chat.html'),api=read('functions/api/user/hope/chat.js'),owner=read('functions/api/agents/chat.js'),ctx=read('functions/lib/user-tool-context.js'),conn=read('functions/lib/user-connectors.js');
-assert.match(account,/href="\/chat\.html"/,'customer dashboard must route to tenant HOPE');
-assert.doesNotMatch(account,/href="\/hope\.html">HOPE/,'customer dashboard must not route to owner HOPE');
+const account=read('Public/account.html'),chat=read('Public/hope-v3.html'),api=read('functions/api/user/hope/chat.js'),owner=read('functions/api/agents/chat.js'),ctx=read('functions/lib/user-tool-context.js'),conn=read('functions/lib/user-connectors.js');
+assert.match(account,/href="\/hope"/,'customer dashboard must route to the active tenant HOPE');
+assert.doesNotMatch(account,/href="\/chat\.html"/,'customer dashboard must not route to the retired duplicate chat');
 assert.match(chat,/\/api\/user\/hope\/chat/,'customer UI must call user HOPE endpoint');
 assert.match(api,/requireUser/,'customer HOPE must require a SaaS user');
 assert.doesNotMatch(api,/requireOwner/,'customer HOPE must never require owner auth');

@@ -10,7 +10,16 @@ export async function ensureUsers(env){await env.DB.batch([
 ])}
 async function derive(password,salt){const material=await crypto.subtle.importKey('raw',enc.encode(String(password)),{name:'PBKDF2'},false,['deriveBits']);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:enc.encode(salt),iterations:150000},material,256);return b64(new Uint8Array(bits))}
 export async function hashPassword(password){const salt=crypto.randomUUID()+crypto.randomUUID(),hash=await derive(password,salt);return {salt,hash}}
-export async function verifyPassword(password,salt,hash){return (await derive(password,salt))===hash}
+function fixedTimeEqual(a,b){
+ try{
+  const left=unb64(String(a||'')),right=unb64(String(b||''));
+  if(left.length!==right.length)return false;
+  let difference=0;
+  for(let i=0;i<left.length;i++)difference|=left[i]^right[i];
+  return difference===0;
+ }catch{return false}
+}
+export async function verifyPassword(password,salt,hash){return fixedTimeEqual(await derive(password,salt),hash)}
 export async function createUserSession(env,user){const exp=Date.now()+1000*60*60*24*14,payload=b64(enc.encode(JSON.stringify({sub:user.id,email:user.email,plan:user.plan,exp}))),k=await key(env.HUB_MASTER_KEY+':user-session'),sig=new Uint8Array(await crypto.subtle.sign('HMAC',k,enc.encode(payload)));return `${payload}.${b64(sig)}`}
 export async function currentUser(request,env){
  const token=cookie(request,'aihub_user');

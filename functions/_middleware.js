@@ -10,6 +10,7 @@ export async function onRequest(context){
   try{
     let rewriter=new HTMLRewriter();
     if(!owner)rewriter=rewriter.on('a[href="/models.html"],a[href="/models"],button[onclick*="models.html"]',{element(el){el.remove()}});
+    if(url.pathname==='/')rewriter=rewriter.on('#login .card',{element(el){el.append('<div style="margin-top:18px;padding-top:16px;border-top:1px solid #dfe3ea"><b>HYVORA users</b><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><a href="/login.html" style="color:#111">Sign in</a><a href="/signup.html" style="color:#111">Create account</a></div></div>',{html:true})}});
     if(isHopePage)rewriter=rewriter.on('body',{element(el){el.append('<script src="/hope-voice6.js?v=6.5" defer></script>',{html:true})}});
     return rewriter.transform(response);
   }catch(e){

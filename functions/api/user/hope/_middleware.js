@@ -1,4 +1,5 @@
 import {executeHopeGateway} from '../../../lib/hope-gateway.js';
+import {currentUser} from '../../../lib/user-auth.js';
 
 const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
 const MOODS={normal:'Respond naturally, clearly and directly.',happy:'Sound upbeat, warm and energetic.',funny:'Be genuinely funny in casual conversation while staying useful and accurate.',angry:'Use a fiery, impatient, sharp-witted tone without insulting or threatening anyone.'};
@@ -17,6 +18,22 @@ function localFallback(message,mood){
   return m==='funny'?'I hit a temporary model hiccup 😅 Your message is safe. Send it once more and I’ll take another route.':'I hit a temporary model hiccup. Your message is safe—send it once more and I’ll take another route.';
 }
 
+async function persistRecoveredReply(request,env,threadId,text){
+  if(!threadId||!text||!env.DB)return false;
+  try{
+    const user=await currentUser(request,env);
+    if(!user)return false;
+    const latest=await env.DB.prepare(`SELECT content FROM user_hope_messages WHERE user_id=? AND thread_id=? AND role='assistant' ORDER BY id DESC LIMIT 1`).bind(user.id,threadId).first();
+    if(latest?.content===text)return true;
+    const now=new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare(`INSERT INTO user_hope_messages(user_id,thread_id,role,content,attachments,created_at) VALUES(?,?,?,?,?,?)`).bind(user.id,threadId,'assistant',text,'[]',now),
+      env.DB.prepare(`UPDATE user_hope_threads SET updated_at=? WHERE user_id=? AND id=?`).bind(now,user.id,threadId)
+    ]);
+    return true;
+  }catch(e){console.error(JSON.stringify({message:'HOPE recovered reply persistence failed',error:String(e?.message||e)}));return false}
+}
+
 export async function onRequest(context){
   const {request,env}=context,url=new URL(request.url),isChat=request.method==='POST'&&/\/api\/user\/hope\/chat\/?$/.test(url.pathname);
   if(!isChat)return context.next();
@@ -28,10 +45,11 @@ export async function onRequest(context){
   }catch(e){console.error('HOPE downstream exception',String(e?.stack||e?.message||e))}
   const message=String(body.message||'').trim(),mood=MOODS[String(body.mood||'normal')]?String(body.mood||'normal'):'normal';
   // Never make greetings and tiny conversational turns wait on another external provider after the main route already failed.
-  if(message.length<=80&&/^(h+(i+|ello|ey)|yo|good\s+(morning|afternoon|evening)|how are you|how r u|what'?s up|whats up|nothing much|not much|nothing|thanks|thank you|thx|ok+|okay|cool|nice)[!.? ]*$/i.test(message))return json({ok:true,threadId:String(body.threadId||''),text:localFallback(message,mood),mood,recovered:true});
+  const threadId=String(body.threadId||''),tiny=message.length<=80&&/^(h+(i+|ello|ey)|yo|good\s+(morning|afternoon|evening)|how are you|how r u|what'?s up|whats up|nothing much|not much|nothing|thanks|thank you|thx|ok+|okay|cool|nice)[!.? ]*$/i.test(message);
+  if(tiny){const text=localFallback(message,mood),persisted=await persistRecoveredReply(request,env,threadId,text);return json({ok:true,threadId,text,mood,recovered:true,persisted})}
   try{
-    const r=await executeHopeGateway(env,{user:{id:'resilience'},threadId:String(body.threadId||''),prompt:message,intent:'conversation',system:`You are HOPE. ${MOODS[mood]} Answer the user directly. Do not mention routing, providers, backend errors, or this fallback.`,messages:[{role:'user',content:message}]});
-    if(r.ok&&String(r.text||'').trim())return json({ok:true,threadId:String(body.threadId||''),text:String(r.text).trim(),mood,recovered:true});
+    const user=await currentUser(request,env),r=await executeHopeGateway(env,{user:user||{id:'resilience'},threadId,prompt:message,intent:'conversation',system:`You are HOPE. ${MOODS[mood]} Answer the user directly. Do not mention routing, providers, backend errors, or this fallback.`,messages:[{role:'user',content:message}]});
+    if(r.ok&&String(r.text||'').trim()){const text=String(r.text).trim(),persisted=await persistRecoveredReply(request,env,threadId,text);return json({ok:true,threadId,text,mood,recovered:true,persisted})}
   }catch(e){console.error('HOPE resilience route failed',String(e?.message||e))}
-  return json({ok:true,threadId:String(body.threadId||''),text:localFallback(message,mood),mood,recovered:true});
+  const text=localFallback(message,mood),persisted=await persistRecoveredReply(request,env,threadId,text);return json({ok:true,threadId,text,mood,recovered:true,persisted});
 }
