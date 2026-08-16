@@ -7,6 +7,7 @@ const redirects=read('Public/_redirects');
 const account=read('Public/account.html');
 const login=read('Public/login.html');
 const signup=read('Public/signup.html');
+const settings=read('Public/settings.html');
 const status=read('functions/api/status.js');
 const resilience=read('functions/api/user/hope/_middleware.js');
 const rateLimit=read('functions/lib/auth-rate-limit.js');
@@ -20,6 +21,10 @@ assert.match(redirects,/\/connect\.html \/connectors\.html 301/,'legacy connect 
 assert.doesNotMatch(account,/href="\/chat\.html|href="\/connect\.html/,'My Hub must not send users to retired pages');
 assert.match(account,/href="\/hope"/,'My Hub must open the active HOPE');
 assert.match(account,/href="\/connectors\.html"/,'My Hub must open active connector onboarding');
+assert.match(account,/href="\/settings\.html"/,'My Hub must expose account and security settings');
+assert.match(settings,/\/api\/account\/password/,'settings must wire password rotation');
+assert.match(settings,/\/api\/account\/deactivate/,'settings must wire guarded account deactivation');
+assert.match(settings,/complete_awaiting_owner_connection|Awaiting owner connection/,'external account capabilities must stay explicitly deferred');
 for(const page of [login,signup]){
   assert.match(page,/requestedNext\.startsWith\('\/'\)&&!requestedNext\.startsWith\('\/\/'\)/,'auth redirects must reject external protocol-relative destinations');
 }

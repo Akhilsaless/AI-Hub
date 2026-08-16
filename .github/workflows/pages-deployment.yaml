@@ -23,6 +23,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Install pinned dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Audit pinned dependencies
+        run: npm audit --audit-level=high
+
       - name: Run production gates
         run: npm test
 
@@ -64,9 +70,6 @@ jobs:
 
       - name: Stamp release
         run: node -e "require('node:fs').writeFileSync('Public/release.json', JSON.stringify({commit:process.env.GITHUB_SHA, deployedAt:new Date().toISOString()}))"
-
-      - name: Install Wrangler
-        run: npm install --no-save wrangler@4.123.0
 
       - name: Deploy existing Pages project
         env:

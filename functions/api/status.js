@@ -1,4 +1,5 @@
 import {isOwner} from '../lib/auth.js';
+import {D1_SCHEMA_VERSION} from '../lib/d1-schema.js';
 
 async function ensureSchema(env){
   await env.DB.batch([
@@ -11,7 +12,7 @@ export async function onRequestGet({request,env}) {
   if (!env.DB) return out({ok:false,database:false,error:'DB binding missing'},500);
   try {
     await ensureSchema(env);
-    const status={ok:true,database:true,masterKeyConfigured:Boolean(env.HUB_MASTER_KEY)};
+    const status={ok:true,database:true,schemaVersion:D1_SCHEMA_VERSION,masterKeyConfigured:Boolean(env.HUB_MASTER_KEY)};
     if(await isOwner(request,env)){
       const tables=await env.DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all();
       status.tables=(tables.results||[]).map(x=>x.name);

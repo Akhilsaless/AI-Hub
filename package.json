@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/release-saas-smoke.mjs && node tests/hope5-jobs-smoke.mjs && node tests/hope5-production-gate.mjs && node tests/hope-gateway-production-gate.mjs && node tests/live-hope-theme-gate.mjs && node tests/production-onboarding-gate.mjs && node tests/auth-rate-limit.mjs",
+    "test": "node tests/release-saas-smoke.mjs && node tests/hope5-jobs-smoke.mjs && node tests/hope5-production-gate.mjs && node tests/hope-gateway-production-gate.mjs && node tests/live-hope-theme-gate.mjs && node tests/production-onboarding-gate.mjs && node tests/auth-rate-limit.mjs && node tests/local-pages-e2e.mjs",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "wrangler": "4.28.0"
+    "sql.js": "1.14.2",
+    "wrangler": "4.123.0"
   }
 }
