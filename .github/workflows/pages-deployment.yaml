@@ -59,7 +59,7 @@ jobs:
           PAGES_HTTP=$(curl --silent --show-error --output /tmp/cf-pages.json --write-out '%{http_code}' \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H 'Content-Type: application/json' \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/ai-hub-93x")
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/ai-hub")
           node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/cf-pages.json','utf8'));if(!x.success){const e=(x.errors||[]).map(v=>String(v.code)+': '+v.message).join('; ');throw new Error('Cloudflare Pages preflight failed ('+process.argv[1]+'): '+e+'. Check that the Account ID belongs to the same account as the token and that the token has Pages Write access.')}console.log('Cloudflare Pages project access verified')" "$PAGES_HTTP"
 
       - name: Stamp release
@@ -71,7 +71,7 @@ jobs:
       - name: Deploy existing Pages project
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler pages deploy Public --project-name=ai-hub-93x --branch=main
+        run: npx wrangler pages deploy Public --project-name=ai-hub --branch=main
 
       - name: Verify production release
         env:
