@@ -35,7 +35,7 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN_RAW" || (echo "CLOUDFLARE_API_TOKEN is missing from GitHub Actions secrets" && exit 1)
           test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "CLOUDFLARE_ACCOUNT_ID is missing from GitHub Actions secrets" && exit 1)
           if ! printf '%s' "$CLOUDFLARE_ACCOUNT_ID" | grep -Eq '^[0-9a-fA-F]{32}$'; then
-            echo "CLOUDFLARE_ACCOUNT_ID has an invalid format. It must be the 32-character Account ID from the Cloudflare dashboard URL, not an API token, database ID, or project ID."
+            echo "CLOUDFLARE_ACCOUNT_ID has an invalid format. It must be the 32-character Account ID from the Cloudflare dashboard URL."
             exit 1
           fi
 
@@ -53,8 +53,8 @@ jobs:
           TOKEN_HTTP=$(curl --silent --show-error --output /tmp/cf-token.json --write-out '%{http_code}' \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H 'Content-Type: application/json' \
-            https://api.cloudflare.com/client/v4/user/tokens/verify)
-          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/cf-token.json','utf8'));if(!x.success){const e=(x.errors||[]).map(v=>String(v.code)+': '+v.message).join('; ');throw new Error('Cloudflare API token verification failed ('+process.argv[1]+'): '+e)};console.log('Cloudflare API token verified as active')" "$TOKEN_HTTP"
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify")
+          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/cf-token.json','utf8'));if(!x.success){const e=(x.errors||[]).map(v=>String(v.code)+': '+v.message).join('; ');throw new Error('Cloudflare account API token verification failed ('+process.argv[1]+'): '+e)};console.log('Cloudflare account API token verified as active')" "$TOKEN_HTTP"
 
           PAGES_HTTP=$(curl --silent --show-error --output /tmp/cf-pages.json --write-out '%{http_code}' \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
