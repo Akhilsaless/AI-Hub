@@ -66,12 +66,12 @@ jobs:
         run: node -e "require('node:fs').writeFileSync('Public/release.json', JSON.stringify({commit:process.env.GITHUB_SHA, deployedAt:new Date().toISOString()}))"
 
       - name: Install Wrangler
-        run: npm install --no-save wrangler@4.28.0
+        run: npm install --no-save wrangler@4.123.0
 
       - name: Deploy existing Pages project
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler pages deploy Public --project-name=ai-hub --branch=main
+        run: npx wrangler pages deploy Public --project-name=ai-hub --branch=main --commit-dirty=true
 
       - name: Verify production release
         env:

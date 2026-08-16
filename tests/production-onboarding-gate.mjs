@@ -10,7 +10,8 @@ const signup=read('Public/signup.html');
 const status=read('functions/api/status.js');
 const resilience=read('functions/api/user/hope/_middleware.js');
 
-assert.match(redirects,/\/chat\.html \/hope-v3\.html 301/,'legacy chat must route to the one active HOPE');
+assert.match(redirects,/\/chat\.html \/hope 301/,'legacy chat must route to the one active HOPE');
+assert.doesNotMatch(redirects,/\/hope(?:\.html)? \/hope-v3\.html/,'the canonical HOPE route must not be rewritten to the retired v3 shell');
 assert.match(redirects,/\/connect\.html \/connectors\.html 301/,'legacy connect links must route to the active connectors page');
 assert.doesNotMatch(account,/href="\/chat\.html|href="\/connect\.html/,'My Hub must not send users to retired pages');
 assert.match(account,/href="\/hope"/,'My Hub must open the active HOPE');
