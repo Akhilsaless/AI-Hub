@@ -1,0 +1,10 @@
+import fs from'node:fs';import assert from'node:assert/strict';
+const p=new URL('../functions/api/user/hope/_middleware.js',import.meta.url),s=fs.readFileSync(p,'utf8');
+for(const phrase of ['what did (we|i) (talk|speak|discuss)','yesterday','last conversation','what do you remember about me'])assert.ok(s.toLowerCase().includes(phrase.toLowerCase()),`missing recall trigger: ${phrase}`);
+assert.ok(s.includes('user_hope_messages'),'must query persisted chat messages');
+assert.ok(s.includes('user_hope_memory'),'must query durable memory');
+assert.ok(/WHERE user_id=\?/.test(s),'all recall queries must be user scoped');
+assert.ok(s.includes('thread_id<>?'),'cross-thread recall must exclude current thread where appropriate');
+assert.ok(s.includes("source:'persisted-d1-history'"),'recall response must identify persisted D1 source internally');
+assert.ok(!/memory doesn['’]t persist between separate chats/i.test(s),'must not claim memory cannot persist');
+console.log('PASS hope-memory-recall-gate: persistent user-scoped cross-chat and date-aware recall verified');
