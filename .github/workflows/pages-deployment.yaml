@@ -66,29 +66,49 @@ jobs:
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
             -H 'Content-Type: application/json' \
             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/ai-hub")
-          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/cf-pages.json','utf8'));if(!x.success){const e=(x.errors||[]).map(v=>String(v.code)+': '+v.message).join('; ');throw new Error('Cloudflare Pages preflight failed ('+process.argv[1]+'): '+e+'. Check that the Account ID belongs to the same account as the token and that the token has Pages Write access.')}console.log('Cloudflare Pages project access verified')" "$PAGES_HTTP"
+          node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/cf-pages.json','utf8'));if(!x.success){const e=(x.errors||[]).map(v=>String(v.code)+': '+v.message).join('; ');throw new Error('Cloudflare Pages preflight failed ('+process.argv[1]+'): '+e+'. Check that the Account ID belongs to the same account as the token and that the token has Pages Write access.')}console.log('Cloudflare Pages project access verified; production branch:',x.result.production_branch)" "$PAGES_HTTP"
 
       - name: Stamp release
-        run: node -e "require('node:fs').writeFileSync('Public/release.json', JSON.stringify({commit:process.env.GITHUB_SHA, deployedAt:new Date().toISOString()}))"
+        run: node -e "require('node:fs').writeFileSync('Public/release.json', JSON.stringify({commit:process.env.GITHUB_SHA,deployedAt:new Date().toISOString()}))"
 
       - name: Deploy existing Pages project
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx wrangler pages deploy Public --project-name=ai-hub --branch=main --commit-dirty=true
+        run: |
+          set -euo pipefail
+          npx wrangler pages deploy Public \
+            --project-name=ai-hub \
+            --branch=main \
+            --commit-hash="$GITHUB_SHA" \
+            --commit-dirty=false \
+            2>&1 | tee /tmp/wrangler-deploy.log
+          DEPLOY_URL=$(grep -Eo 'https://[a-zA-Z0-9.-]+\.pages\.dev' /tmp/wrangler-deploy.log | tail -1)
+          test -n "$DEPLOY_URL" || (echo "Could not determine Cloudflare deployment URL" && exit 1)
+          echo "DEPLOY_URL=$DEPLOY_URL" >> "$GITHUB_ENV"
+          echo "Cloudflare immutable deployment: $DEPLOY_URL"
+
+      - name: Verify immutable deployment
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$DEPLOY_URL/release.json?expected=$EXPECTED_SHA" --output /tmp/immutable-release.json
+          node -e "const fs=require('fs');const raw=fs.readFileSync('/tmp/immutable-release.json','utf8');let x;try{x=JSON.parse(raw)}catch{throw new Error('Immutable deployment release endpoint returned non-JSON: '+raw.slice(0,120))}if(x.commit!==process.env.EXPECTED_SHA)throw new Error('Immutable deployment SHA mismatch: '+x.commit);console.log('Verified immutable deployment commit',x.commit)"
 
       - name: Verify production release
         env:
           EXPECTED_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          for attempt in {1..12}; do
+          for attempt in {1..18}; do
             curl --fail --silent --show-error \
-              "https://ai-hub-93x.pages.dev/release.json?expected=$EXPECTED_SHA&attempt=$attempt" \
+              -H 'Accept: application/json' \
+              "https://ai-hub-93x.pages.dev/release.json?expected=$EXPECTED_SHA&attempt=$attempt&cachebust=$(date +%s%N)" \
               --output /tmp/ai-hub-release.json
-            if node -e "const fs=require('node:fs');const x=JSON.parse(fs.readFileSync('/tmp/ai-hub-release.json','utf8'));if(x.commit!==process.env.EXPECTED_SHA){console.log('Waiting for production propagation; currently serving',x.commit);process.exit(1)}console.log('Verified production commit',x.commit)"; then
+            if node -e "const fs=require('fs');const raw=fs.readFileSync('/tmp/ai-hub-release.json','utf8');let x;try{x=JSON.parse(raw)}catch{console.log('Production alias has not promoted release.json yet; received non-JSON');process.exit(1)}if(x.commit!==process.env.EXPECTED_SHA){console.log('Waiting for production propagation; currently serving',x.commit);process.exit(1)}console.log('Verified production commit',x.commit)"; then
               exit 0
             fi
             sleep 5
           done
-          echo "Production did not serve the expected commit within 60 seconds"
+          echo "Production alias did not serve the expected commit within 90 seconds"
           exit 1
