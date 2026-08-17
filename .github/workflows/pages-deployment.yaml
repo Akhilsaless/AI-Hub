@@ -92,8 +92,17 @@ jobs:
           EXPECTED_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error "$DEPLOY_URL/release.json?expected=$EXPECTED_SHA" --output /tmp/immutable-release.json
-          node -e "const fs=require('fs');const raw=fs.readFileSync('/tmp/immutable-release.json','utf8');let x;try{x=JSON.parse(raw)}catch{throw new Error('Immutable deployment release endpoint returned non-JSON: '+raw.slice(0,120))}if(x.commit!==process.env.EXPECTED_SHA)throw new Error('Immutable deployment SHA mismatch: '+x.commit);console.log('Verified immutable deployment commit',x.commit)"
+          for attempt in {1..12}; do
+            HTTP=$(curl --silent --show-error --output /tmp/immutable-release.json --write-out '%{http_code}' \
+              "$DEPLOY_URL/release.json?expected=$EXPECTED_SHA&attempt=$attempt&cachebust=$(date +%s%N)" || true)
+            if [ "$HTTP" = "200" ] && node -e "const fs=require('fs');const raw=fs.readFileSync('/tmp/immutable-release.json','utf8');let x;try{x=JSON.parse(raw)}catch{process.exit(1)}if(x.commit!==process.env.EXPECTED_SHA)process.exit(1);console.log('Verified immutable deployment commit',x.commit)"; then
+              exit 0
+            fi
+            echo "Waiting for immutable deployment propagation (attempt $attempt, HTTP $HTTP)"
+            sleep 5
+          done
+          echo "Immutable deployment did not become verifiable within 60 seconds"
+          exit 1
 
       - name: Verify production release
         env:
@@ -101,13 +110,13 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in {1..18}; do
-            curl --fail --silent --show-error \
+            HTTP=$(curl --silent --show-error --output /tmp/ai-hub-release.json --write-out '%{http_code}' \
               -H 'Accept: application/json' \
-              "https://ai-hub-93x.pages.dev/release.json?expected=$EXPECTED_SHA&attempt=$attempt&cachebust=$(date +%s%N)" \
-              --output /tmp/ai-hub-release.json
-            if node -e "const fs=require('fs');const raw=fs.readFileSync('/tmp/ai-hub-release.json','utf8');let x;try{x=JSON.parse(raw)}catch{console.log('Production alias has not promoted release.json yet; received non-JSON');process.exit(1)}if(x.commit!==process.env.EXPECTED_SHA){console.log('Waiting for production propagation; currently serving',x.commit);process.exit(1)}console.log('Verified production commit',x.commit)"; then
+              "https://ai-hub-93x.pages.dev/release.json?expected=$EXPECTED_SHA&attempt=$attempt&cachebust=$(date +%s%N)" || true)
+            if [ "$HTTP" = "200" ] && node -e "const fs=require('fs');const raw=fs.readFileSync('/tmp/ai-hub-release.json','utf8');let x;try{x=JSON.parse(raw)}catch{console.log('Production alias has not promoted release.json yet; received non-JSON');process.exit(1)}if(x.commit!==process.env.EXPECTED_SHA){console.log('Waiting for production propagation; currently serving',x.commit);process.exit(1)}console.log('Verified production commit',x.commit)"; then
               exit 0
             fi
+            echo "Waiting for production alias propagation (attempt $attempt, HTTP $HTTP)"
             sleep 5
           done
           echo "Production alias did not serve the expected commit within 90 seconds"
