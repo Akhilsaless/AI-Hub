@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/academy-phase1-gate.mjs && node tests/release-saas-smoke.mjs && node tests/hope5-jobs-smoke.mjs && node tests/hope5-production-gate.mjs && node tests/hope-gateway-production-gate.mjs && node tests/hope-memory-recall-gate.mjs && node tests/live-hope-theme-gate.mjs && node tests/production-onboarding-gate.mjs && node tests/auth-rate-limit.mjs && node tests/local-pages-e2e.mjs && node tests/hyvora-marketing-gate.mjs && node tests/hyvora-full-gate.mjs && node tests/ai-provider-gateway-gate.mjs && node tests/ai-gateway-execution-gate.mjs",
+    "test": "node tests/academy-phase1-gate.mjs && node tests/academy-phase2-curriculum-gate.mjs && node tests/release-saas-smoke.mjs && node tests/hope5-jobs-smoke.mjs && node tests/hope5-production-gate.mjs && node tests/hope-gateway-production-gate.mjs && node tests/hope-memory-recall-gate.mjs && node tests/live-hope-theme-gate.mjs && node tests/production-onboarding-gate.mjs && node tests/auth-rate-limit.mjs && node tests/local-pages-e2e.mjs && node tests/hyvora-marketing-gate.mjs && node tests/hyvora-full-gate.mjs && node tests/ai-provider-gateway-gate.mjs && node tests/ai-gateway-execution-gate.mjs",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {"sql.js":"1.14.2","wrangler":"4.123.0"}
