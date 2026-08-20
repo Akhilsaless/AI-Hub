@@ -1,5 +1,7 @@
+import {CURRICULUM,curriculumActivities} from './academy-curriculum.js';
+export {CURRICULUM} from './academy-curriculum.js';
 export const LEVELS=[
-{id:'beginner',title:'Beginner',order:1,minMastery:80,tracks:['foundations','models']},
+{id:'beginner',title:'Beginner',order:1,minMastery:80,tracks:['foundations','models','work']},
 {id:'intermediate',title:'Intermediate',order:2,minMastery:85,tracks:['work','builder']},
 {id:'advanced',title:'Advanced',order:3,minMastery:88,tracks:['agent-engineer','business']}
 ];
@@ -14,19 +16,21 @@ export const SPECIALIST_TRACKS=[
 {id:'automation-agents',title:'AI Automation & Agents',requiresLevel:'advanced'},
 {id:'data-productivity',title:'AI for Data & Productivity',requiresLevel:'intermediate'}
 ];
-export const TRACKS=[
-{id:'foundations',title:'AI Foundations',icon:'🧠',level:'Beginner',levelId:'beginner',xp:900,desc:'Understand AI without drowning in jargon.',lessons:[['ai-in-10','AI in 10 minutes','story'],['prompt-battle','Prompt Battle','battle'],['hallucination-hunt','Hallucination Hunt','game'],['context-window','The Context Window','interactive'],['multimodal','AI Can See & Hear','lab'],['reasoning','How Reasoning Models Think','story']]},
-{id:'models',title:'Model Arena',icon:'⚔️',level:'Beginner',levelId:'beginner',xp:1400,desc:'Learn the major AI families by making them compete.',lessons:[['openai','OpenAI & GPT','arena'],['gemini','Google Gemini','arena'],['claude','Anthropic Claude','arena'],['llama','Meta Llama','arena'],['deepseek','DeepSeek','arena'],['qwen','Qwen','arena'],['mistral','Mistral','arena'],['grok','xAI Grok','arena'],['kimi','Kimi','arena'],['glm','GLM','arena'],['minimax','MiniMax','arena']]},
-{id:'work',title:'AI at Work',icon:'⚡',level:'Intermediate',levelId:'intermediate',xp:1600,desc:'Turn everyday work into superpowers.',lessons:[['research','Research 10× faster','mission'],['docs','Documents & PDFs','lab'],['sheets','AI + spreadsheets','lab'],['sales','Sales copilot','mission'],['marketing','Marketing machine','mission'],['recruiting','Recruiting workflows','mission'],['finance','Finance workflows','mission']]},
-{id:'builder',title:'AI Builder',icon:'🛠️',level:'Intermediate',levelId:'intermediate',xp:2200,desc:'Stop consuming AI. Build with it.',lessons:[['apis','APIs without fear','interactive'],['rag','Build RAG','build'],['agents','Build your first agent','build'],['mcp','Tools & MCP','build'],['automation','Automate a workflow','build'],['deploy','Ship an AI app','build']]},
-{id:'agent-engineer',title:'Agent Engineer',icon:'🤖',level:'Advanced',levelId:'advanced',xp:3000,desc:'Design reliable autonomous systems.',lessons:[['planning','Planning & decomposition','lab'],['memory','Agent memory','lab'],['tools','Tool calling','build'],['routing','Model routing','lab'],['evals','Evals & verification','mission'],['guardrails','Guardrails','mission'],['self-repair','Repair loops','build'],['multi-agent','Multi-agent systems','build']]},
-{id:'business',title:'AI Business Builder',icon:'🚀',level:'Advanced',levelId:'advanced',xp:2600,desc:'Turn AI ability into a real product or business.',lessons:[['problem','Find valuable problems','mission'],['economics','AI unit economics','interactive'],['mvp','Build an MVP','build'],['offer','Package the offer','mission'],['launch','Launch challenge','boss']]}
-];
+const META={
+foundations:{title:'AI Foundations',icon:'🧠',desc:'Understand, prompt and verify AI safely.'},
+models:{title:'Model Arena',icon:'⚔️',desc:'Compare major AI model families and capabilities.'},
+work:{title:'AI at Work',icon:'⚡',desc:'Use AI for research, documents, data and business work.'},
+builder:{title:'AI Builder',icon:'🛠️',desc:'Build with APIs, RAG, agents and automation.'},
+'agent-engineer':{title:'Agent Engineer',icon:'🤖',desc:'Engineer reliable, evaluated and secure AI systems.'},
+business:{title:'AI Business Builder',icon:'🚀',desc:'Turn AI ability into products and businesses.'}
+};
+const activities=curriculumActivities();
+export const TRACKS=Object.keys(META).map(id=>{const a=activities.filter(x=>x.trackId===id),levelId=a[0]?.levelId||'beginner',m=META[id];return {id,title:m.title,icon:m.icon,level:levelId[0].toUpperCase()+levelId.slice(1),levelId,xp:a.length*100,desc:m.desc,lessons:a.map(x=>[x.id,x.title,x.type])}});
 export const MODEL_FAMILIES=['OpenAI GPT','Google Gemini','Anthropic Claude','Meta Llama','DeepSeek','Qwen','Mistral','xAI Grok','Kimi','GLM','MiniMax','Cohere','NVIDIA NIM','OpenRouter','Hugging Face','Groq','Cerebras'];
-export function allLessons(){return TRACKS.flatMap(t=>t.lessons.map((l,i)=>({id:l[0],title:l[1],format:l[2],trackId:t.id,trackTitle:t.title,levelId:t.levelId,index:i,xp:80+(i%3)*20})))}
+export function allLessons(){return activities.map((x,i)=>({id:x.id,title:x.title,format:x.type,trackId:x.trackId,trackTitle:META[x.trackId]?.title||x.trackId,levelId:x.levelId,moduleId:x.moduleId,moduleTitle:x.moduleTitle,moduleIndex:x.moduleIndex,activityIndex:x.activityIndex,estimatedMinutes:x.minutes,capstone:x.capstone,index:i,xp:80+(i%3)*20}))}
 export function lesson(id){return allLessons().find(x=>x.id===id)||null}
 export function levelById(id){return LEVELS.find(x=>x.id===id)||LEVELS[0]}
-export function levelLessons(levelId){const ids=new Set(levelById(levelId).tracks);return allLessons().filter(l=>ids.has(l.trackId))}
+export function levelLessons(levelId){return allLessons().filter(l=>l.levelId===levelId)}
 export function levelProgress(levelId,progress=[]){const lessons=levelLessons(levelId),done=lessons.filter(l=>progress.some(p=>p.lesson_id===l.id&&p.status==='completed')),scores=done.map(l=>Number(progress.find(p=>p.lesson_id===l.id)?.score||0)),average=scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):0;return {levelId,total:lessons.length,completed:done.length,average,complete:done.length===lessons.length};}
 export function progressionFor(progress=[]){const beginner=levelProgress('beginner',progress),intermediate=levelProgress('intermediate',progress),advanced=levelProgress('advanced',progress);const beginnerPassed=beginner.complete&&beginner.average>=levelById('beginner').minMastery;const intermediatePassed=intermediate.complete&&intermediate.average>=levelById('intermediate').minMastery;return {levels:{beginner:{...beginner,unlocked:true,passed:beginnerPassed},intermediate:{...intermediate,unlocked:beginnerPassed,passed:intermediatePassed},advanced:{...advanced,unlocked:beginnerPassed&&intermediatePassed,passed:advanced.complete&&advanced.average>=levelById('advanced').minMastery}},highestUnlocked:beginnerPassed?(intermediatePassed?'advanced':'intermediate'):'beginner'};}
 export function canAccessLesson(lessonId,progress=[]){const l=lesson(lessonId);if(!l)return {allowed:false,reason:'unknown_lesson'};const gate=progressionFor(progress).levels[l.levelId];if(!gate?.unlocked)return {allowed:false,reason:'level_locked',levelId:l.levelId};const levelLs=levelLessons(l.levelId),idx=levelLs.findIndex(x=>x.id===l.id);if(idx>0){const previous=levelLs[idx-1];const previousDone=progress.some(p=>p.lesson_id===previous.id&&p.status==='completed');if(!previousDone)return {allowed:false,reason:'previous_lesson_required',requiredLessonId:previous.id,levelId:l.levelId};}return {allowed:true,levelId:l.levelId};}
