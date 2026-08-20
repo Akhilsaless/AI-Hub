@@ -1,0 +1,16 @@
+import {requireUser} from '../../lib/user-auth.js';
+import {levelLessons,progressionFor} from '../../lib/academy.js';
+const json=(v,s=200)=>new Response(JSON.stringify(v),{status:s,headers:{'content-type':'application/json','cache-control':'no-store'}});
+const QUESTIONS=[
+{id:'verify',prompt:'An AI gives you a confident factual answer. What should you do before relying on it?',correct:'verify'},
+{id:'prompt',prompt:'Which prompt is strongest for an important task?',correct:'context'},
+{id:'model',prompt:'When choosing an AI model, what matters most?',correct:'fit'},
+{id:'privacy',prompt:'What should you do with sensitive personal or company data?',correct:'protect'},
+{id:'limits',prompt:'Which statement about AI is most accurate?',correct:'fallible'}
+];
+async function ensure(env){await env.DB.batch([
+ env.DB.prepare(`CREATE TABLE IF NOT EXISTS academy_onboarding(user_id TEXT PRIMARY KEY,experience TEXT,goal TEXT,role TEXT,recommended_level TEXT NOT NULL DEFAULT 'beginner',placement_score INTEGER NOT NULL DEFAULT 0,placement_passed INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL)`),
+ env.DB.prepare(`CREATE TABLE IF NOT EXISTS academy_progress(user_id TEXT NOT NULL,lesson_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'started',score INTEGER NOT NULL DEFAULT 0,xp_earned INTEGER NOT NULL DEFAULT 0,completed_at TEXT,updated_at TEXT NOT NULL,PRIMARY KEY(user_id,lesson_id))`)
+])}
+export async function onRequestGet({request,env}){const a=await requireUser(request,env);if(a.response)return a.response;return json({ok:true,passScore:85,questions:QUESTIONS.map(({id,prompt})=>({id,prompt}))});}
+export async function onRequestPost({request,env}){const a=await requireUser(request,env);if(a.response)return a.response;await ensure(env);const b=await request.json(),answers=b?.answers&&typeof b.answers==='object'?b.answers:{};let correct=0;for(const q of QUESTIONS)if(String(answers[q.id]||'')===q.correct)correct++;const score=Math.round(correct/QUESTIONS.length*100),passed=score>=85,now=new Date().toISOString();await env.DB.prepare(`INSERT INTO academy_onboarding(user_id,recommended_level,placement_score,placement_passed,updated_at) VALUES(?,'beginner',?,?,?) ON CONFLICT(user_id) DO UPDATE SET placement_score=excluded.placement_score,placement_passed=excluded.placement_passed,recommended_level=CASE WHEN excluded.placement_passed=1 THEN 'intermediate' ELSE 'beginner' END,updated_at=excluded.updated_at`).bind(a.user.id,score,passed?1:0,now).run();if(passed){for(const l of levelLessons('beginner'))await env.DB.prepare(`INSERT INTO academy_progress(user_id,lesson_id,status,score,xp_earned,completed_at,updated_at) VALUES(?,?,'completed',?,0,?,?) ON CONFLICT(user_id,lesson_id) DO UPDATE SET status='completed',score=MAX(score,excluded.score),completed_at=COALESCE(completed_at,excluded.completed_at),updated_at=excluded.updated_at`).bind(a.user.id,l.id,score,now,now).run();}const rows=await env.DB.prepare(`SELECT lesson_id,status,score FROM academy_progress WHERE user_id=?`).bind(a.user.id).all();return json({ok:true,score,passed,recommendedLevel:passed?'intermediate':'beginner',progression:progressionFor(rows.results||[]),message:passed?'Placement passed. Beginner mastery verified; Intermediate is unlocked.':'Placement not passed. Start with Beginner and build mastery before advancing.'});}
