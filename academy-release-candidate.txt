@@ -1,0 +1,2 @@
+HOPE Academy release candidate validation branch.
+Academy phases 1-10 implementation complete; this branch exists to obtain inspectable pull-request CI evidence before production sign-off.
