@@ -1,4 +1,4 @@
-const A=(id,title,type='lesson',minutes=8)=>({id,title,type,minutes});
+const A=(id,title,type='lesson',minutes=9)=>({id,title,type,minutes});
 const M=(id,title,levelId,trackId,activities,capstone=false)=>({id,title,levelId,trackId,activities,capstone});
 export const CURRICULUM=[
 M('b1-ai-basics','AI Fundamentals','beginner','foundations',[A('ai-in-10','What AI Actually Is','story'),A('ai-vs-search','AI vs Search Engines','lesson'),A('tokens-basics','Tokens, Context and Outputs','interactive'),A('training-inference','Training vs Inference','lesson'),A('ai-strengths-limits','Where AI Excels and Fails','lab'),A('b1-check','Fundamentals Mastery Check','quiz',12)]),
