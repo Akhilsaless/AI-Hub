@@ -1,4 +1,5 @@
 AI HUB deployment marker
 Target: latest main with HOPE 3, Academy Phases 1-10 release candidate, SaaS accounts, Projects, Proof Arena, Skill Passport, customer connectors, mood selector, customer voice replies, delete conversation, and tenant-isolated customer HOPE.
-Forced redeploy: 2026-08-21T09:33+05:30
+Validated Academy merge SHA: 2aab388e8b72cc934df40647d6b1aa03e8c8d4a3
+Forced redeploy: 2026-08-21T09:55+05:30
 Production URL: https://ai-hub-93x.pages.dev/
