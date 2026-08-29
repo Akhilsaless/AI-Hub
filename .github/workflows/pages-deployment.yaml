@@ -69,7 +69,7 @@ jobs:
           node -e "const fs=require('fs');const x=JSON.parse(fs.readFileSync('/tmp/cf-pages.json','utf8'));if(!x.success){const e=(x.errors||[]).map(v=>String(v.code)+': '+v.message).join('; ');throw new Error('Cloudflare Pages preflight failed ('+process.argv[1]+'): '+e+'. Check that the Account ID belongs to the same account as the token and that the token has Pages Write access.')}console.log('Cloudflare Pages project access verified; production branch:',x.result.production_branch)" "$PAGES_HTTP"
 
       - name: Stamp release
-        run: node -e "require('node:fs').writeFileSync('Public/release.json', JSON.stringify({commit:process.env.GITHUB_SHA,deployedAt:new Date().toISOString()}))"
+        run: node scripts/stamp-release.mjs
 
       - name: Deploy existing Pages project
         env:
@@ -94,7 +94,7 @@ jobs:
           set -euo pipefail
           for attempt in {1..12}; do
             HTTP=$(curl --silent --show-error --output /tmp/immutable-release.json --write-out '%{http_code}' \
-              "$DEPLOY_URL/release.json?expected=$EXPECTED_SHA&attempt=$attempt&cachebust=$(date +%s%N)" || true)
+              "$DEPLOY_URL/api/release?expected=$EXPECTED_SHA&attempt=$attempt&cachebust=$(date +%s%N)" || true)
             if [ "$HTTP" = "200" ] && node -e "const fs=require('fs');const raw=fs.readFileSync('/tmp/immutable-release.json','utf8');let x;try{x=JSON.parse(raw)}catch{process.exit(1)}if(x.commit!==process.env.EXPECTED_SHA)process.exit(1);console.log('Verified immutable deployment commit',x.commit)"; then
               exit 0
             fi
@@ -112,7 +112,7 @@ jobs:
           for attempt in {1..18}; do
             HTTP=$(curl --silent --show-error --output /tmp/ai-hub-release.json --write-out '%{http_code}' \
               -H 'Accept: application/json' \
-              "https://ai-hub-93x.pages.dev/release.json?expected=$EXPECTED_SHA&attempt=$attempt&cachebust=$(date +%s%N)" || true)
+              "https://ai-hub-93x.pages.dev/api/release?expected=$EXPECTED_SHA&attempt=$attempt&cachebust=$(date +%s%N)" || true)
             if [ "$HTTP" = "200" ] && node -e "const fs=require('fs');const raw=fs.readFileSync('/tmp/ai-hub-release.json','utf8');let x;try{x=JSON.parse(raw)}catch{console.log('Production alias has not promoted release.json yet; received non-JSON');process.exit(1)}if(x.commit!==process.env.EXPECTED_SHA){console.log('Waiting for production propagation; currently serving',x.commit);process.exit(1)}console.log('Verified production commit',x.commit)"; then
               exit 0
             fi
