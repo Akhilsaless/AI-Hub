@@ -1,0 +1,10 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const core=fs.readFileSync('functions/lib/video-gateway-execute.js','utf8');
+const api=fs.readFileSync('functions/api/video/generate.js','utf8');
+const ui=fs.readFileSync('Public/video-ai.html','utf8');
+const admin=fs.readFileSync('Public/ai-control.html','utf8');
+assert.match(core,/provider='wan'/);assert.match(core,/wan3\.0-video/);assert.match(core,/video-premium/);assert.match(core,/authorizePremium/);assert.match(core,/recordPremiumCharge/);assert.match(core,/charged=1/);assert.match(core,/X-DashScope-Async/);assert.match(core,/video-generation\/video-synthesis/);assert.match(core,/\/tasks\//);
+assert.match(api,/requireUser/);assert.match(api,/createWanVideo/);assert.match(api,/pollWanVideo/);
+assert.match(ui,/Consumer app credits are not treated as backend API credits/i);assert.match(ui,/Generate with Wan Premium/);
+assert.match(admin,/Wan Premium connection/);assert.match(admin,/wan3\.0-video/);assert.match(admin,/verifiedFree:false/);
+console.log('HOPE NEXT video gateway gate passed');
