@@ -1,0 +1,14 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const connectors=fs.readFileSync('functions/lib/user-connectors.js','utf8');
+const api=fs.readFileSync('functions/api/user/connectors.js','utf8');
+const intel=fs.readFileSync('functions/lib/hope-model-intelligence.js','utf8');
+const gateway=fs.readFileSync('functions/lib/ai-gateway-execute.js','utf8');
+assert.match(connectors,/openrouter[^\n]*accessClass:'bonus'[^\n]*userConnectable:true/);
+assert.match(connectors,/groq[^\n]*accessClass:'byok'[^\n]*userConnectable:true/);
+assert.match(connectors,/gemini[^\n]*accessClass:'byok'[^\n]*userConnectable:true/);
+assert.match(connectors,/github_models[^\n]*userConnectable:false/);
+assert.doesNotMatch(api,/kind==='model_provider'&&!a\.user\.isOwner/,'blanket owner-only model provider restriction must be removed');
+assert.match(api,/premiumAccessOwnerControlled:true/);assert.match(api,/globalRoutingOwnerOnly:true/);
+assert.match(intel,/shouldEscalatePremium/);assert.match(intel,/complex_task_benefits_from_premium/);
+assert.match(gateway,/premiumRecommendation=shouldEscalatePremium/);assert.match(gateway,/free_route_preferred/);
+console.log('HOPE NEXT user AI integrations gate passed');

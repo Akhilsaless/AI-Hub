@@ -1,4 +1,6 @@
 import {credentialFor,ensureAIProviderSchema,providerDefinition} from './ai-provider-core.js';
+import {authorizePremium,capabilityFor,defaultAccessClass,ensureAIEntitlementSchema,logRoutingDecision,platformPremiumAllowed,recordPremiumCharge} from './ai-entitlements.js';
+import {shouldEscalatePremium} from './hope-model-intelligence.js';
 
 const safeJson=(v,f={})=>{try{return typeof v==='string'?JSON.parse(v):v??f}catch{return f}};
 const timeout=ms=>AbortSignal.timeout?AbortSignal.timeout(ms):undefined;
@@ -39,15 +41,19 @@ async function monthSpend(env){
 }
 
 async function candidates(env,req,p){
- const caps=requiredCaps(req),rows=await env.DB.prepare(`SELECT m.*,i.enabled integration_enabled,i.verified_free,COALESCE(h.healthy,1) provider_healthy,h.latency_ms provider_latency FROM ai_model_registry m JOIN integrations i ON i.id=m.provider LEFT JOIN provider_health h ON h.provider=m.provider WHERE m.healthy=1 AND i.enabled=1 AND COALESCE(h.healthy,1)=1`).all().catch(()=>({results:[]}));
- let list=(rows.results||[]).map(x=>({...x,capabilities:safeJson(x.capabilities,[]),metadata:safeJson(x.metadata,{})})).filter(x=>caps.every(c=>x.capabilities.includes(c)||c==='chat'));
- if(p.freeOnly)list=list.filter(x=>x.free_capable&&x.verified_free);
- else if(!p.allowPaidFallback)list=list.filter(x=>x.free_capable&&x.verified_free);
+ await ensureAIEntitlementSchema(env);
+ const caps=requiredCaps(req),rows=await env.DB.prepare(`SELECT m.*,i.enabled integration_enabled,i.verified_free,COALESCE(h.healthy,1) provider_healthy,h.latency_ms provider_latency,a.access_class,a.owner_scope,a.enabled access_enabled,a.super_admin_only,a.estimated_unit_cost_usd FROM ai_model_registry m JOIN integrations i ON i.id=m.provider LEFT JOIN provider_health h ON h.provider=m.provider LEFT JOIN ai_model_access a ON a.provider=m.provider AND a.model_id=m.model_id AND a.owner_scope='platform' WHERE m.healthy=1 AND i.enabled=1 AND COALESCE(h.healthy,1)=1 AND COALESCE(a.enabled,1)=1`).all().catch(()=>({results:[]}));
+ let list=(rows.results||[]).map(x=>{const def=providerDefinition(x.provider);return {...x,capabilities:safeJson(x.capabilities,[]),metadata:safeJson(x.metadata,{}),accessClass:x.access_class||defaultAccessClass(x.provider,Boolean(x.free_capable&&x.verified_free)),estimatedUnitCostUsd:Number(x.estimated_unit_cost_usd||0),premium:Boolean(def?.premium)||x.access_class==='premium'}}).filter(x=>caps.every(c=>x.capabilities.includes(c)||c==='chat'));
+ if(p.freeOnly)list=list.filter(x=>x.accessClass!=='premium'&&x.free_capable&&x.verified_free);
+ else if(!p.allowPaidFallback)list=list.filter(x=>x.accessClass!=='premium');
  if(p.mode==='manual')list=list.filter(x=>x.provider===p.provider&&x.model_id===p.modelId);
  const priority=new Map((p.providerPriority||[]).map((id,i)=>[id,i]));
  const score=x=>{
   let s=50;
-  if(x.free_capable&&x.verified_free)s+=30;
+  if(x.accessClass==='free'&&x.free_capable&&x.verified_free)s+=45;
+  if(x.accessClass==='bonus')s+=38;
+  if(x.accessClass==='byok')s+=32;
+  if(x.accessClass==='premium')s-=20;
   if(caps.includes('reasoning')&&x.capabilities.includes('reasoning'))s+=16;
   if(caps.includes('code')&&x.capabilities.includes('code'))s+=12;
   if(caps.includes('vision')&&x.capabilities.includes('vision'))s+=12;
@@ -55,7 +61,7 @@ async function candidates(env,req,p){
   if(priority.has(x.provider))s+=Math.max(0,10-priority.get(x.provider));
   if(p.mode==='fastest'&&latency)s+=Math.max(0,30-latency/100);
   if(p.mode==='best-quality'){if(x.capabilities.includes('reasoning'))s+=20;if(/large|pro|reason|r1|70b|120b|gpt|gemini/.test(x.model_id.toLowerCase()))s+=12;}
-  if(p.mode==='free-first'&&x.free_capable&&x.verified_free)s+=40;
+  if(p.mode==='free-first'&&x.accessClass!=='premium')s+=50;
   return s;
  };
  return list.map(x=>({...x,routeScore:score(x)})).sort((a,b)=>b.routeScore-a.routeScore);
@@ -88,10 +94,23 @@ async function record(env,{userId,feature,route,ok,latency,inputTokens=0,outputT
  await env.DB.prepare(`INSERT INTO provider_health(provider,healthy,last_checked_at,error) VALUES(?,?,?,?) ON CONFLICT(provider) DO UPDATE SET healthy=excluded.healthy,last_checked_at=excluded.last_checked_at,error=excluded.error`).bind(route.provider,ok?1:(cls==='authentication'||cls==='provider_unavailable'?0:1),now(),ok?null:String(error?.message||error).slice(0,500)).run().catch(()=>{});
 }
 
-export async function executeCentralGateway(env,{user=null,feature='chat',prompt='',messages=[],attachments=[],modeOverride=null,provider=null,modelId=null,adminDebug=false}={}){
- await ensureAIProviderSchema(env);const p=await policy(env,feature);if(modeOverride)p.mode=modeOverride;if(provider){p.mode='manual';p.provider=provider;p.modelId=modelId}
+export async function executeCentralGateway(env,{user=null,feature='chat',prompt='',messages=[],attachments=[],modeOverride=null,provider=null,modelId=null,adminDebug=false,manualPremiumApproved=false,correlationId=crypto.randomUUID()}={}){
+ await ensureAIProviderSchema(env);await ensureAIEntitlementSchema(env);const p=await policy(env,feature);if(modeOverride)p.mode=modeOverride;if(provider){p.mode='manual';p.provider=provider;p.modelId=modelId}
  if(!p.freeOnly&&p.allowPaidFallback&&p.monthlyBudgetUsd>0){const spent=await monthSpend(env);if(spent>=p.monthlyBudgetUsd)return {ok:false,error:'Monthly AI budget limit reached.',errorClass:'budget_limit'};}
+ const premiumRecommendation=shouldEscalatePremium(prompt,feature,attachments);
  const routes=await candidates(env,{feature,prompt,attachments},p);if(!routes.length)return {ok:false,error:p.freeOnly?'No verified free model is currently available for this request.':'No compatible configured AI model is currently available.',errorClass:'no_route'};
- const attempts=[];for(const route of routes.slice(0,6)){const started=Date.now();try{const out=await invoke(env,route,messages),latency=Date.now()-started;await record(env,{userId:user?.id,feature,route,ok:true,latency,inputTokens:out.inputTokens,outputTokens:out.outputTokens});return {ok:true,provider:route.provider,model:route.model_id,text:out.text,content:out.text,latencyMs:latency,usage:{inputTokens:out.inputTokens,outputTokens:out.outputTokens,estimatedCostUsd:0},routing:{mode:p.mode,freeOnly:p.freeOnly,allowPaidFallback:p.allowPaidFallback,candidates:routes.length,fallbackCount:attempts.length},attempts:adminDebug?attempts:undefined}}catch(e){const latency=Date.now()-started,cls=errorClass(e.status,e.message);await record(env,{userId:user?.id,feature,route,ok:false,latency,error:e});attempts.push({provider:route.provider,model:route.model_id,errorClass:cls,error:adminDebug?String(e.message||e):undefined});if(cls==='authentication')continue;if(cls==='rate_limit'||cls==='quota'||cls==='timeout'||cls==='provider_unavailable'||cls==='model_unavailable'||cls==='provider_error')continue;}}
- return {ok:false,error:'AI providers are temporarily unavailable. Please try again.',errorClass:'all_routes_failed',attempts:adminDebug?attempts:undefined,routing:{mode:p.mode,candidates:routes.length,fallbackCount:attempts.length}};
+ const attempts=[];for(const route of routes.slice(0,6)){
+  let premiumAuth=null;
+  if(route.accessClass==='premium'||route.premium){
+   const forcedPremium=p.mode==='manual'&&p.provider===route.provider&&p.modelId===route.model_id;
+   if(!premiumRecommendation.recommended&&!forcedPremium&&p.mode!=='best-quality'){await logRoutingDecision(env,{userId:user?.id,feature,provider:route.provider,modelId:route.model_id,accessClass:'premium',decision:'skipped',reason:'free_route_preferred',correlationId});continue;}
+   if(!p.allowPaidFallback){await logRoutingDecision(env,{userId:user?.id,feature,provider:route.provider,modelId:route.model_id,accessClass:'premium',decision:'blocked',reason:'paid_fallback_disabled',correlationId});continue;}
+   if(!platformPremiumAllowed(route.provider,'text')){await logRoutingDecision(env,{userId:user?.id,feature,provider:route.provider,modelId:route.model_id,accessClass:'premium',decision:'blocked',reason:'provider_not_platform_premium',correlationId});continue;}
+   if(!user?.id){await logRoutingDecision(env,{feature,provider:route.provider,modelId:route.model_id,accessClass:'premium',decision:'blocked',reason:'authenticated_user_required',correlationId});continue;}
+   const estimatedCostUsd=Number(route.estimatedUnitCostUsd||0);if(estimatedCostUsd<=0){await logRoutingDecision(env,{userId:user.id,feature,provider:route.provider,modelId:route.model_id,accessClass:'premium',decision:'blocked',reason:'premium_cost_not_configured',correlationId});continue;}
+   premiumAuth=await authorizePremium(env,{userId:user.id,planId:user.plan_id||user.plan||'free',capability:capabilityFor({feature}),estimatedCostUsd,manualApproved:manualPremiumApproved,correlationId});
+   if(!premiumAuth.allowed){await logRoutingDecision(env,{userId:user.id,feature,provider:route.provider,modelId:route.model_id,accessClass:'premium',decision:'blocked',reason:premiumAuth.reason,correlationId,estimatedCostUsd});attempts.push({provider:route.provider,model:route.model_id,errorClass:premiumAuth.reason});continue;}
+  }
+  const started=Date.now();try{const out=await invoke(env,route,messages),latency=Date.now()-started,cost=route.accessClass==='premium'?Number(route.estimatedUnitCostUsd||0):0;await record(env,{userId:user?.id,feature,route,ok:true,latency,inputTokens:out.inputTokens,outputTokens:out.outputTokens,cost});if(premiumAuth?.allowed)await recordPremiumCharge(env,{userId:user.id,capability:capabilityFor({feature}),provider:route.provider,modelId:route.model_id,costUsd:cost,funding:premiumAuth.funding,correlationId});await logRoutingDecision(env,{userId:user?.id,feature,provider:route.provider,modelId:route.model_id,accessClass:route.accessClass,decision:'used',reason:premiumAuth?.funding||route.accessClass,correlationId,estimatedCostUsd:cost});return {ok:true,provider:route.provider,model:route.model_id,text:out.text,content:out.text,latencyMs:latency,usage:{inputTokens:out.inputTokens,outputTokens:out.outputTokens,estimatedCostUsd:cost,accessClass:route.accessClass,funding:premiumAuth?.funding||null},routing:{mode:p.mode,freeOnly:p.freeOnly,allowPaidFallback:p.allowPaidFallback,candidates:routes.length,fallbackCount:attempts.length,correlationId,premiumRecommended:premiumRecommendation.recommended,complexity:premiumRecommendation.level},attempts:adminDebug?attempts:undefined}}catch(e){const latency=Date.now()-started,cls=errorClass(e.status,e.message);await record(env,{userId:user?.id,feature,route,ok:false,latency,error:e});await logRoutingDecision(env,{userId:user?.id,feature,provider:route.provider,modelId:route.model_id,accessClass:route.accessClass,decision:'failed',reason:cls,correlationId});attempts.push({provider:route.provider,model:route.model_id,errorClass:cls,error:adminDebug?String(e.message||e):undefined});if(cls==='authentication')continue;if(cls==='rate_limit'||cls==='quota'||cls==='timeout'||cls==='provider_unavailable'||cls==='model_unavailable'||cls==='provider_error')continue;}}
+ return {ok:false,error:'No permitted AI route completed the request. Connect a free/BYOK provider or request premium access.',errorClass:'all_routes_failed',attempts:adminDebug?attempts:undefined,routing:{mode:p.mode,candidates:routes.length,fallbackCount:attempts.length,correlationId,premiumRecommended:premiumRecommendation.recommended,complexity:premiumRecommendation.level}};
 }

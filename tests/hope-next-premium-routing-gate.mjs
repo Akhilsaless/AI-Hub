@@ -1,0 +1,12 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const gateway=fs.readFileSync('functions/lib/ai-gateway-execute.js','utf8');
+const ent=fs.readFileSync('functions/lib/ai-entitlements.js','utf8');
+const admin=fs.readFileSync('functions/api/admin/ai-control.js','utf8');
+const video=fs.readFileSync('functions/lib/video-provider-core.js','utf8');
+const catalog=fs.readFileSync('functions/api/video/catalog.js','utf8');
+assert.match(gateway,/authorizePremium/);assert.match(gateway,/premium_cost_not_configured/);assert.match(gateway,/paid_fallback_disabled/);assert.match(gateway,/recordPremiumCharge/);assert.match(gateway,/logRoutingDecision/);
+assert.match(ent,/plan_allowance/);assert.match(ent,/wallet/);assert.match(ent,/approval_required/);
+assert.match(admin,/requireOwner/);assert.match(admin,/set-plan-entitlement/);assert.match(admin,/set-model-access/);assert.match(admin,/wallet-credit/);assert.match(admin,/provider!==['"]openai['"]&&provider!==['"]wan['"]/);
+assert.match(video,/consumer signup\/monthly credits/i);assert.match(video,/web credits are not treated as API credits/i);assert.match(video,/id:'wan'.*accessClass:'premium'.*platformFunded:true/);
+assert.match(catalog,/consumerCreditsAreNotApiCredits:true/);assert.match(catalog,/noSilentPaidFallback:true/);
+console.log('HOPE NEXT premium routing gate passed');

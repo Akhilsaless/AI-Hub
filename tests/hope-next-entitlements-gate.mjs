@@ -1,0 +1,13 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const ent=fs.readFileSync('functions/lib/ai-entitlements.js','utf8');
+const core=fs.readFileSync('functions/lib/ai-provider-core.js','utf8');
+const exec=fs.readFileSync('functions/lib/ai-gateway-execute.js','utf8');
+const policy=fs.readFileSync('docs/hope-next-ai-entitlements.md','utf8');
+assert.match(ent,/ACCESS_CLASSES=.*free.*bonus.*byok.*premium/,'access classes missing');
+assert.match(ent,/ai_plan_entitlements/);assert.match(ent,/ai_user_entitlements/);assert.match(ent,/ai_allowance_ledger/);assert.match(ent,/ai_wallet_ledger/);assert.match(ent,/ai_routing_decisions/);
+assert.match(ent,/authorizePremium/);assert.match(ent,/approval_required/);assert.match(ent,/premium_allowance_exhausted/);
+assert.match(ent,/provider==='openai'\|\|provider==='wan'/,'premium provider guard missing');
+assert.match(core,/openai:\{[^\n]*premium:true/,'OpenAI must remain premium');
+assert.match(exec,/freeOnly/);assert.match(exec,/allowPaidFallback/);
+assert.match(policy,/No silent paid fallback/i);assert.match(policy,/only platform-funded premium video provider/i);
+console.log('HOPE NEXT entitlement gate passed');
