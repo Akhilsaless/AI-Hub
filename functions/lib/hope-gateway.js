@@ -1,5 +1,5 @@
 import {executeCentralGateway} from './ai-gateway-execute.js';
-import {executeOpenAIPrimary,executeZeroCost} from './router-execute.js';
+import {executeZeroCost} from './router-execute.js';
 
 const COMPLEX=/\b(analy[sz]e|architecture|audit|compare|debug|diagnose|evaluate|investigate|plan|research|strategy|trade-?off|why|build|code|implement|security|financial|legal|medical)\b/i;
 const SIMPLE=/^(hi+|hey+|hello+|thanks|thank you|ok+|okay|cool|nice|rewrite|rephrase|summari[sz]e)\b/i;
@@ -10,11 +10,11 @@ export async function executeHopeGateway(env,{user,threadId=null,prompt='',inten
  const reasoning=requirement({prompt,intent,attachments}),started=Date.now(),stopped=await env.DB.prepare(`SELECT emergency_stop FROM provider_settings WHERE provider='global'`).first().catch(()=>null);if(stopped?.emergency_stop)return{ok:false,error:'HOPE AI is temporarily paused by the Owner.',reasoning};
  const requestMessages=[{role:'system',content:system},...messages],feature=intent==='coding'||intent==='build'?'coding':intent==='analysis'||intent==='strategy'||intent==='research'?'analysis':attachments.length?'vision':'chat';
  let result=await executeCentralGateway(env,{user,feature,prompt,messages:requestMessages,attachments});
- // Backward-compatible bridge while existing verified integrations migrate into the new registry.
+ // Backward-compatible bridge is zero-cost only. Premium routes must always pass through executeCentralGateway entitlement checks.
  if(!result.ok&&result.errorClass==='no_route'){
-  const mode=reasoning==='strong'?'hard':reasoning==='fast'?'fast':'normal',primary=await executeOpenAIPrimary(env,requestMessages,mode,{attachments});
-  result=primary.ok?primary:await executeZeroCost(env,requestMessages,mode==='hard'?'hard':'normal',{attachments});
-  if(result.ok)result.routing={...(result.routing||{}),migrationBridge:true};
+  const mode=reasoning==='strong'?'hard':reasoning==='fast'?'fast':'normal';
+  const free=await executeZeroCost(env,requestMessages,mode==='hard'?'hard':'normal',{attachments});
+  if(free.ok){result={...free,usage:{...(free.usage||{}),accessClass:'free',funding:null},routing:{...(free.routing||{}),migrationBridge:true,premiumBypass:false}}}
  }
  await record(env,{userId:user?.id||'unknown',threadId,intent,reasoning,provider:result.provider,model:result.model,success:result.ok,latencyMs:Date.now()-started,error:result.error});return{...result,reasoning};
 }
