@@ -25,7 +25,7 @@ const ui=fs.readFileSync('Public/hope-goals.html','utf8');
 const campaignApi=fs.readFileSync('functions/api/marketing/campaigns.js','utf8');
 
 for(const re of [/user_hope_goal_effects/,/idempotency_key/,/uncertain/,/needs_review/,/retry_authorized/,/ready_to_resume/,/maxSteps/,/resolveGoalStepReview/,/cancelGoal/])assert.match(executor,re);
-assert.match(executor,/prior\.status==='completed'/,'completed side effects must be reused rather than repeated');
+assert.match(executor,/prior\?\.status==='completed'/,'completed side effects must be reused rather than repeated');
 assert.match(executor,/\['running','uncertain'\]/,'ambiguous writes must pause instead of retrying automatically');
 assert.match(agent,/hyvora_campaign_create/);assert.match(agent,/hyvora_campaign_list/);assert.match(agent,/hyvora_metrics_read/);
 assert.match(tools,/connector:'internal'.*capability:'hyvora'/s);assert.match(tools,/createHyvoraCampaign/);assert.match(tools,/readHyvoraMetrics/);
