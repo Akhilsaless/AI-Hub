@@ -1,0 +1,10 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';
+const usage=fs.readFileSync('functions/api/user/ai-usage.js','utf8');
+const telemetry=fs.readFileSync('Public/hope-ai-telemetry.js','utf8');
+const middleware=fs.readFileSync('functions/_middleware.js','utf8');
+assert.match(usage,/requireUser/,'AI usage endpoint must require authentication');
+assert.match(usage,/walletBalance/);assert.match(usage,/allowanceSpent/);assert.match(usage,/recentRouting/);
+assert.match(telemetry,/usage\.accessClass/);assert.match(telemetry,/agentCount/);assert.match(telemetry,/estimatedCostUsd/);
+assert.match(telemetry,/if\(x\.agents\)/,'agent count must only be displayed when backend telemetry reports a positive count');
+assert.match(middleware,/hope-ai-telemetry\.js/,'HOPE pages must load execution telemetry');
+console.log('HOPE NEXT user usage telemetry gate passed');
