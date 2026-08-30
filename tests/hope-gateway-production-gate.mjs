@@ -8,6 +8,8 @@ const router=read('functions/lib/router-execute.js');
 const chat=read('functions/api/user/hope/chat.js');
 const connectors=read('functions/api/user/connectors.js');
 const catalog=read('functions/lib/user-connectors.js');
+const entitlement=read('functions/lib/ai-entitlements.js');
+const providerCore=read('functions/lib/ai-provider-core.js');
 const ownerUi=read('Public/models.html');
 const settings=read('functions/api/providers/settings.js');
 
@@ -25,6 +27,7 @@ assert.match(ownerUi,/API key · never returned to browser/,'Owner UI must keep 
 assert.doesNotMatch(chat,/provider:r\.provider|model:r\.model/,'normal HOPE response construction must not hard-code provider/model exposure');
 assert.match(connectors,/requireUser/,'user connector API must require authentication');
 assert.match(catalog,/userConnectable:true/,'approved free\/BYOK model providers must be user-connectable');
-assert.match(catalog,/platformPremium:true/,'platform-paid premium providers must be distinguishable from user-owned routes');
+assert.match(providerCore,/openai:\{[^\n]*premium:true/,'OpenAI must remain classified as platform premium');
+assert.match(entitlement,/platformPremiumAllowed/,'platform premium allow-list must be enforced outside the user connector catalog');
 
 console.log('PASS hope-gateway-production-gate: central entitlements, zero-cost fallback, budgets and provider isolation structurally verified');
