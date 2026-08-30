@@ -9,7 +9,7 @@ const videoCore=fs.readFileSync('functions/lib/video-provider-core.js','utf8');
 assert.match(usage,/requireUser/,'AI usage endpoint must require authentication');
 assert.match(usage,/walletBalance/);assert.match(usage,/allowanceSpent/);assert.match(usage,/recentRouting/);
 assert.match(usage,/function publicRoute/,'user usage API must sanitize premium routing details');
-assert.doesNotMatch(usage,/return json\([^\n]*recent\.results\|\|\[\]/,'raw routing rows must not be returned directly');
+assert.match(usage,/recentRouting:\(recent\.results\|\|\[\]\)\.map\(publicRoute\)/,'routing rows must pass through the public redaction mapper');
 assert.match(telemetry,/usage\.accessClass/);assert.match(telemetry,/agentCount/);assert.match(telemetry,/estimatedCostUsd/);
 assert.match(telemetry,/Premium Intelligence/,'premium telemetry must use a capability label');
 assert.match(telemetry,/x\.access!==['"]premium['"]/,'premium telemetry must suppress provider/model display');
