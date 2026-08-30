@@ -24,7 +24,7 @@ assert.match(settings,/requireOwner/,'global provider settings must remain Owner
 assert.match(ownerUi,/API key · never returned to browser/,'Owner UI must keep platform API keys server-side');
 assert.doesNotMatch(chat,/provider:r\.provider|model:r\.model/,'normal HOPE response construction must not hard-code provider/model exposure');
 assert.match(connectors,/requireUser/,'user connector API must require authentication');
-assert.match(catalog,/userConfigurable:true/,'approved free\/BYOK model providers must be user-connectable');
+assert.match(catalog,/userConnectable:true/,'approved free\/BYOK model providers must be user-connectable');
 assert.match(catalog,/platformPremium:true/,'platform-paid premium providers must be distinguishable from user-owned routes');
 
 console.log('PASS hope-gateway-production-gate: central entitlements, zero-cost fallback, budgets and provider isolation structurally verified');
