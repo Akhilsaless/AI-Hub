@@ -8,5 +8,5 @@ export const VIDEO_PROVIDERS={
  wan:{id:'wan',name:'Wan',accessClass:'premium',connectionMode:'api-key',backendUsable:true,platformFunded:true,note:'Only platform-funded premium video provider enabled for this phase.'}
 };
 export const videoProvider=id=>VIDEO_PROVIDERS[String(id||'')]||null;
-export function publicVideoCatalog(){return Object.values(VIDEO_PROVIDERS).map(({id,name,accessClass,connectionMode,backendUsable,platformFunded,note})=>({id,name,accessClass,connectionMode,backendUsable,platformFunded,note}));}
-export function assertPlatformVideoProvider(id){if(id!=='wan')throw new Error('Wan is the only platform-funded premium video provider enabled for this phase.');return true;}
+export function publicVideoCatalog(){return Object.values(VIDEO_PROVIDERS).map(p=>p.platformFunded?{id:'premium-video',name:'HOPE Premium Video',accessClass:'premium',connectionMode:'managed',backendUsable:true,platformFunded:true,note:'Managed premium video generation. HOPE automatically selects the approved provider and model.'}:{id:p.id,name:p.name,accessClass:p.accessClass,connectionMode:p.connectionMode,backendUsable:p.backendUsable,platformFunded:false,note:p.note});}
+export function assertPlatformVideoProvider(id){if(id!=='wan')throw new Error('Configured platform premium video provider is not permitted.');return true;}
